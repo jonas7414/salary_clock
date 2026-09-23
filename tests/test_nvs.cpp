@@ -33,7 +33,13 @@ int main(){
     committed=good;fail_commit=true;c.monthly_salary=65000;CHECK(app_config_save(c)==ESP_FAIL);fail_commit=false;
     CHECK(app_config_init(&loaded)==ESP_OK&&loaded);CHECK(app_config_snapshot().monthly_salary==55000);
     CHECK(app_config_reset()==ESP_OK);CHECK(app_config_init(&loaded)==ESP_OK&&!loaded);
-    committed=good;flash_error=ESP_ERR_NVS_NEW_VERSION_FOUND;CHECK(app_config_init(&loaded)==ESP_OK&&!loaded);
-    committed=good;flash_error=ESP_ERR_NVS_NO_FREE_PAGES;CHECK(app_config_init(&loaded)==ESP_OK&&!loaded);
-    std::printf("PASS: %u NVS checks (first boot, persistence, corruption, version mismatch, commit failure, reset, recovery)\n",checks);
+    committed=good;flash_error=ESP_ERR_NVS_NEW_VERSION_FOUND;CHECK(app_config_init(&loaded)==ESP_ERR_NVS_NEW_VERSION_FOUND);CHECK(committed==good);
+    committed=good;flash_error=ESP_ERR_NVS_NO_FREE_PAGES;CHECK(app_config_init(&loaded)==ESP_ERR_NVS_NO_FREE_PAGES);CHECK(committed==good);
+    CHECK(app_config_init(&loaded)==ESP_OK&&loaded);CHECK(app_config_verify()==ESP_OK);
+    CHECK(app_config_begin_ota());CHECK(!app_config_begin_ota());
+    CHECK(app_config_save(c)==ESP_ERR_INVALID_STATE);CHECK(app_config_reset()==ESP_ERR_INVALID_STATE);
+    CHECK(app_config_snapshot().monthly_salary==55000);CHECK(committed==good);
+    app_config_end_ota();CHECK(app_config_save(c)==ESP_OK);
+    committed.back()^=1;CHECK(app_config_verify()!=ESP_OK);
+    std::printf("PASS: %u NVS checks (first boot, persistence, corruption, version mismatch, commit failure, reset, preserved errors, OTA write exclusion)\n",checks);
 }

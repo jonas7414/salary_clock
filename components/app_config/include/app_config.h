@@ -5,3 +5,8 @@ esp_err_t app_config_init(bool *configured);
 AppConfig app_config_snapshot();
 esp_err_t app_config_save(const AppConfig &config);
 esp_err_t app_config_reset();
+
+// Serialize flash configuration writes with OTA. Snapshots remain available.
+bool app_config_begin_ota();
+void app_config_end_ota();
+esp_err_t app_config_verify();

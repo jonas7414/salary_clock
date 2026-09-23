@@ -29,6 +29,8 @@ def main():
              "components/display/ui_animation.cpp","components/display/ui_renderer.cpp"]
     binary=OUT/("test_core.exe" if os.name=="nt" else "test_core")
     command=compiler+["-std=c++17","-O2","-Wall","-Wextra","-Werror"]
+    version=(ROOT/"version.txt").read_text(encoding="utf-8").strip()
+    command += [f'-DAPP_FIRMWARE_VERSION="{version}"']
     command += ["-Icomponents/"+x+"/include" for x in ["app_core","coin_physics","display"]]
     command += ["-Icomponents/display"]+sources+["-o",str(binary)]
     subprocess.run(command,cwd=ROOT,env=env,check=True)
@@ -78,6 +80,14 @@ def main():
     json_result=subprocess.run([str(json_binary)],cwd=ROOT,env=env,check=True,capture_output=True,text=True)
     print(json_result.stdout,end="")
     with (OUT/"results.txt").open("a",encoding="utf-8") as f:f.write(json_result.stdout)
+    ota_binary=OUT/("test_ota.exe" if os.name=="nt" else "test_ota")
+    subprocess.run(compiler+["-std=c++17","-O2","-Wall","-Wextra","-Werror",
+        "-Icomponents/ota_manager/include","-Icomponents/app_core/include","-I"+str(cjson),
+        "tests/test_ota.cpp","components/ota_manager/ota_policy.cpp",str(cjson_object),
+        "-o",str(ota_binary)],cwd=ROOT,env=env,check=True)
+    ota_result=subprocess.run([str(ota_binary)],cwd=ROOT,env=env,check=True,capture_output=True,text=True)
+    print(ota_result.stdout,end="")
+    with (OUT/"results.txt").open("a",encoding="utf-8") as f:f.write(ota_result.stdout)
     sheet=Image.new("RGB",(680,1200),"#e8ecee")
     draw=ImageDraw.Draw(sheet)
     labels=["01 / Main","02 / Remaining","03 / Month","04 / System","Setup","Waiting for SNTP","Before work","Lunch","After work","Day off","Hold button"]

@@ -13,6 +13,7 @@ void task(void *) {
         if (synced) localtime_r(&now,&local);
         const auto status=calculate_salary(app_config_snapshot(),local,now,synced);
         salary_publish(status);
+        system_heartbeat(CriticalTask::Salary);
         if (status.date_key && status.date_key != last_date) {
             last_date=status.date_key;
             ESP_LOGI("salary","Work days: %d; daily salary: %.2f",status.monthly_work_days,status.daily_salary);

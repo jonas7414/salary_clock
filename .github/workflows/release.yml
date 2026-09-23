@@ -1,0 +1,75 @@
+﻿name: Firmware release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: firmware-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [tdisplay_s3, tdisplay_s3_no_psram]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install build tools
+        run: python -m pip install platformio==6.2.0 pillow
+      - name: Validate tag and source version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          if [ "$REF_TYPE" = tag ]; then
+            python tools/release_tools.py --tag "$RELEASE_TAG"
+          else
+            python tools/release_tools.py
+          fi
+          python -m unittest discover -s tests -p 'test_release_tools.py' -v
+      - name: Build firmware
+        run: pio run -e ${{ matrix.environment }}
+      - name: Host regression tests
+        if: matrix.environment == 'tdisplay_s3'
+        run: python tools/test_host.py --cxx g++
+      - name: Validate image and package checksums
+        run: python tools/release_tools.py --environment ${{ matrix.environment }} --output release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.environment }}
+          path: release/*
+          if-no-files-found: error
+          retention-days: 14
+  publish:
+    needs: build
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+      - name: Verify downloaded artifacts
+        working-directory: release
+        run: |
+          sha256sum --check firmware.sha256
+          sha256sum --check firmware-no-psram.sha256
+      - name: Create draft, upload complete asset set, then publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" --verify-tag --draft --title "$RELEASE_TAG" --generate-notes
+          gh release upload "$RELEASE_TAG" release/firmware.bin release/firmware.sha256 release/firmware-no-psram.bin release/firmware-no-psram.sha256
+          gh release edit "$RELEASE_TAG" --draft=false --latest

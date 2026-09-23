@@ -13,7 +13,11 @@ void synced(struct timeval *) {
     ESP_LOGI("time","SNTP synchronized");
 }
 void task(void *) {
-    xEventGroupWaitBits(system_events(),WIFI_CONNECTED_BIT,pdFALSE,pdTRUE,portMAX_DELAY);
+    // Waiting for an access point is healthy; it must not fail boot probation.
+    while (true) {
+        system_heartbeat(CriticalTask::Time);
+        if (xEventGroupWaitBits(system_events(),WIFI_CONNECTED_BIT,pdFALSE,pdTRUE,pdMS_TO_TICKS(1000))&WIFI_CONNECTED_BIT) break;
+    }
     esp_sntp_config_t cfg=ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(2,ESP_SNTP_SERVER_LIST("pool.ntp.org","time.cloudflare.com"));
     cfg.sync_cb=synced;
     ESP_ERROR_CHECK(esp_netif_sntp_init(&cfg));
@@ -26,6 +30,7 @@ void task(void *) {
             time_wait_publish(true); warned=true;
         }
         // SNTP continues periodic retries. Never clear the valid clock on a Wi-Fi disconnect.
+        system_heartbeat(CriticalTask::Time);
         vTaskDelayUntil(&wake,pdMS_TO_TICKS(1000));
     }
 }

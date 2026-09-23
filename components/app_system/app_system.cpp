@@ -1,10 +1,13 @@
 #include "app_system.h"
 #include "freertos/semphr.h"
+#include "esp_timer.h"
 namespace {
 EventGroupHandle_t events;
 QueueHandle_t commands, pages, salary;
 SemaphoreHandle_t mutex;
 DeviceStatus device;
+TaskHealth health;
+portMUX_TYPE health_lock=portMUX_INITIALIZER_UNLOCKED;
 }
 esp_err_t app_system_init() {
     events = xEventGroupCreate();
@@ -20,6 +23,7 @@ EventGroupHandle_t system_events() { return events; }
 QueueHandle_t system_commands() { return commands; }
 QueueHandle_t page_events() { return pages; }
 esp_err_t system_request(SystemCommand c) {
+    if (xEventGroupGetBits(events)&OTA_ACTIVE_BIT) return ESP_ERR_INVALID_STATE;
     return xQueueSend(commands,&c,pdMS_TO_TICKS(100)) == pdTRUE ? ESP_OK : ESP_ERR_TIMEOUT;
 }
 SystemState system_state() {
@@ -45,3 +49,11 @@ void display_publish(uint32_t t,uint32_t d,bool p) {
     device.partial_rendering=p; xSemaphoreGive(mutex);
 }
 void time_wait_publish(bool e) { xSemaphoreTake(mutex,portMAX_DELAY); device.sntp_wait_expired=e; xSemaphoreGive(mutex); }
+void system_heartbeat(CriticalTask task) {
+    const auto now=esp_timer_get_time();
+    portENTER_CRITICAL(&health_lock); health.beat(task,now); portEXIT_CRITICAL(&health_lock);
+}
+bool system_tasks_healthy(int64_t now,int64_t max_age) {
+    portENTER_CRITICAL(&health_lock); const bool ok=health.healthy(now,max_age); portEXIT_CRITICAL(&health_lock);
+    return ok;
+}

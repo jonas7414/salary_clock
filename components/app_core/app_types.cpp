@@ -56,3 +56,12 @@ uint32_t config_checksum(const AppConfig &c) {
     }
     return ~crc;
 }
+
+bool config_migrate(AppConfig &config) {
+    switch (config.version) {
+        case CONFIG_VERSION: return config_validate(config,true);
+        // Future compatible migrations belong here. Decode older-sized records
+        // separately before this hook; preserve their original NVS representation.
+        default: return false;
+    }
+}

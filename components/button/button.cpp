@@ -23,6 +23,7 @@ void task(void *) {
             }
         }
         button_publish(held);
+        system_heartbeat(CriticalTask::Button);
         vTaskDelayUntil(&wake,pdMS_TO_TICKS(10));
     }
 }

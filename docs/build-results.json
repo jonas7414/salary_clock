@@ -1,6 +1,6 @@
 {
   "date": "2026-09-23",
-  "firmware_version": "1.1.0",
+  "firmware_version": "1.2.1",
   "platformio_versions_verified": [
     "6.2.0"
   ],
@@ -8,50 +8,70 @@
   "esp_idf": "5.5.0",
   "display": "320x170 landscape, USB left",
   "hardware_tested": false,
-  "host_checks_passed": 1539918,
+  "host_checks_passed": 1540172,
   "builds": {
     "tdisplay_s3": {
       "status": "SUCCESS",
       "platformio": "6.2.0",
       "psram_enabled": true,
-      "static_ram_bytes": 38460,
-      "flash_usage_bytes": 1057731,
+      "static_ram_bytes": 38996,
+      "flash_usage_bytes": 1242467,
       "artifacts": {
         "firmware.bin": {
-          "bytes": 1058128,
-          "sha256": "51de35af11370d59de98fc8422bacf56dd809590ac68a23be7a5d9f2d1ff85a5"
+          "bytes": 1242864,
+          "sha256": "729d1b1796a0bd7bfbd4e34df07cb4bab8a3424b893170cff4cf6848056479eb"
         },
         "bootloader.bin": {
-          "bytes": 22656,
-          "sha256": "e2b3d27b824f67e374f3311a6b51b4c43a9bc20c53a6cb975209f2acc6dc553d"
+          "bytes": 22736,
+          "sha256": "564541925e6366c30dd9c35d613151f62ce61d6f6bb3d0fa5f3f8fc17e7ab9f6"
         },
         "partitions.bin": {
           "bytes": 3072,
-          "sha256": "6f0657eb6b8007c0dbfed6f64cf7a0d59f8ee1752af898e2f66dd218846b1835"
+          "sha256": "09593f720acfecf9af216d9f3fdd5b4dd9b8bed0ab713d4332b05f25b28d4bd2"
+        },
+        "ota_data_initial.bin": {
+          "bytes": 8192,
+          "sha256": "7d2c7ac4888bfd75cd5f56e8d61f69595121183afc81556c876732fd3782c62f"
         }
-      }
+      },
+      "ota_partition_bytes": 4194304,
+      "remaining_ota_bytes": 2951440,
+      "rollback_enabled": true,
+      "tls_certificate_bundle_enabled": true
     },
     "tdisplay_s3_no_psram": {
       "status": "SUCCESS",
       "platformio": "6.2.0",
       "psram_enabled": false,
-      "static_ram_bytes": 37016,
-      "flash_usage_bytes": 1047503,
+      "static_ram_bytes": 37552,
+      "flash_usage_bytes": 1232431,
       "artifacts": {
         "firmware.bin": {
-          "bytes": 1047904,
-          "sha256": "644734c307ac62f0ca8b28d185af30b2684afa5aac8a8b44540925cedb47c1cc"
+          "bytes": 1232832,
+          "sha256": "6449937117b9df772141db167b26e9dcae7ec3cd20d9c29462035b70363983dd"
         },
         "bootloader.bin": {
-          "bytes": 22656,
-          "sha256": "061d22de092ca262f30b4b34dc210062461a00c706c7389bfff607123291e9ee"
+          "bytes": 22736,
+          "sha256": "62a6c1dc4e8728859b48ed2656a9c222219d53399e3a24bff5b1102d1dc67a83"
         },
         "partitions.bin": {
           "bytes": 3072,
-          "sha256": "6f0657eb6b8007c0dbfed6f64cf7a0d59f8ee1752af898e2f66dd218846b1835"
+          "sha256": "09593f720acfecf9af216d9f3fdd5b4dd9b8bed0ab713d4332b05f25b28d4bd2"
+        },
+        "ota_data_initial.bin": {
+          "bytes": 8192,
+          "sha256": "7d2c7ac4888bfd75cd5f56e8d61f69595121183afc81556c876732fd3782c62f"
         }
-      }
+      },
+      "ota_partition_bytes": 4194304,
+      "remaining_ota_bytes": 2961472,
+      "rollback_enabled": true,
+      "tls_certificate_bundle_enabled": true
     }
   },
-  "build_log": ".artifacts/build-date.log"
+  "build_log": ".artifacts/build-release-1.2.1.log",
+  "release_guard_test_groups": 3,
+  "ota_hardware_tested": false,
+  "ota_policy": "Check once on every boot after Wi-Fi and time sync, then wait 20s; manual requests supported",
+  "report_scope": "Local build; published assets are rebuilt and tested in GitHub Actions"
 }

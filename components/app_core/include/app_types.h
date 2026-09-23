@@ -34,3 +34,6 @@ uint32_t hm_to_seconds(uint8_t hour, uint8_t minute);
 int calculate_work_days_in_month(int year, int month, uint8_t mask);
 SalaryStatus calculate_salary(const AppConfig &config, const tm &local, time_t now, bool synced);
 uint32_t config_checksum(const AppConfig &config);
+
+// RAM-only schema upgrade hook. Never rewrites persistent data during boot probation.
+bool config_migrate(AppConfig &config);

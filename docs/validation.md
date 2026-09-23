@@ -4,26 +4,28 @@
 
 本文件中的測試與實板項目分開記錄，不能由「有程式碼」推定實板已通過。
 
-主機共 **1,539,918 項檢查通過**（核心 452,704、堆疊 1,087,162、NVS 17、JSON 35）。可攜的結果見 [host-results.txt](host-results.txt) 與 [build-results.json](build-results.json)，後者包含韌體 SHA256。
+主機共 **1,540,172 項 C++ 檢查通過**（核心 452,704、堆疊 1,087,162、NVS 29、JSON 35、OTA 242），另有 3 組 Python release guard 測試。可攜的結果見 [host-results.txt](host-results.txt) 與 [build-results.json](build-results.json)，後者包含韌體 SHA256。OTA 實板測試矩陣見 [ota.md](ota.md)。
 
-v1.0.0 曾以 Core 6.1.18 及 VS Code 的全域 Core 6.2.0 完成建置；`core_dir = .tools/platformio` 直接沿用現有套件。v1.1.0 使用 Core 6.2.0、Espressif32 6.12.0、ESP-IDF 5.5.0，最新雙環境建置記錄為 `.artifacts/build-date.log`；沒有重新下載套件。本次更新未執行 upload。
+v1.2.1 使用 Core 6.2.0、Espressif32 6.12.0、ESP-IDF 5.5.0；`core_dir = .tools/platformio` 沿用現有套件。本機雙環境建置記錄為 `.artifacts/build-release-1.2.1.log`。實板 upload、斷電及回滾仍需依下列程序驗收；CI 發布狀態見 [GitHub Actions](https://github.com/jonas7414/salary_clock/actions/workflows/release.yml)。
 
 | 項目 | 證據來源 |
 | --- | --- |
 | 薪資、日曆、設定、Wi-Fi policy、按鍵、物理、動畫、renderer | `python tools/test_host.py` 的 `.artifacts/host/results.txt` |
-| NVS 首次開機、腐敗、版本不符、commit failure、reset、初始化 recovery | 真正 `app_config.cpp` + `tests/test_nvs.cpp` 的 fake NVS adapter |
+| NVS 首次開機、腐敗、版本不符、commit failure、reset、錯誤時保留、OTA 寫入互斥 | 真正 `app_config.cpp` + `tests/test_nvs.cpp` 的 fake NVS adapter |
+| OTA SemVer／Release JSON／SHA／TLS host／健康期／串流故障注入 | `tests/test_ota.cpp`，直接編譯 production policy 與 transfer code |
+| 發布版本／分區／產物表檢查 | `python -m unittest discover -s tests -p test_release_tools.py -v` |
 | API 設定解析、型別、範圍、時間、重複鍵、巢狀 JSON、密碼保留／清除 | 真正 `config_json.cpp` + ESP-IDF 的 cJSON + `tests/test_json.cpp` |
 | 11 個狀態橫向畫面 | `.artifacts/host/screens.png`；實際 C++ renderer |
 | 硬幣 16 秒動畫與落定堆疊 | `.artifacts/host/coin_physics.gif`、`stack_settled.png`；實際 C++ physics / renderer |
 | 吃飯與下班休息動畫 | `.artifacts/host/lunch.gif`、`rest.gif`；實際 C++ renderer，完整循環 120／100 幀 |
 | 16 枚硬幣接觸、支撐、休眠、喚醒及容量壓力 | `tests/test_coin_stack.cpp`；同一套物理引擎，八組隨機種子與額外指定案例 |
-| ESP-IDF 預設 build | `pio run -e tdisplay_s3`：SUCCESS；`.artifacts/build-date.log` |
-| 無 PSRAM build | `pio run -e tdisplay_s3_no_psram`：SUCCESS；`.artifacts/build-date.log` |
+| ESP-IDF 預設 build | `pio run -e tdisplay_s3`：SUCCESS；`.artifacts/build-release-1.2.1.log` |
+| 無 PSRAM build | `pio run -e tdisplay_s3_no_psram`：SUCCESS；`.artifacts/build-release-1.2.1.log` |
 
 | 組態 | 靜態 RAM | 程式 Flash 用量 | firmware.bin |
 | --- | ---: | ---: | ---: |
-| PSRAM 預設 | 38,460 bytes | 1,057,731 bytes | 1,058,128 bytes |
-| 無 PSRAM | 37,016 bytes | 1,047,503 bytes | 1,047,904 bytes |
+| PSRAM 預設 | 38,980 bytes | 1,242,467 bytes | 1,242,864 bytes |
+| 無 PSRAM | 37,560 bytes | 1,232,431 bytes | 1,232,832 bytes |
 
 上述 RAM 是 linker 的靜態用量，不含執行時 task、Wi-Fi、HTTP 與 framebuffer 配置。已檢查實際產生的 sdkconfig：兩者均為 ESP32-S3、16 MB QIO、FreeRTOS 1000 Hz；預設為 Octal PSRAM，備援組態 `SPIRAM=false`。兩者 firmware 都小於 4 MiB app partition。
 

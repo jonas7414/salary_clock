@@ -82,7 +82,10 @@ void task(void *) {
             else {
                 // Allow the HTTP response to leave the socket before rebooting.
                 vTaskDelay(pdMS_TO_TICKS(600));
-                if (command==SystemCommand::FactoryReset) ESP_ERROR_CHECK(app_config_reset());
+                if (command==SystemCommand::FactoryReset) {
+                    const auto err=app_config_reset();
+                    if (err!=ESP_OK) { ESP_LOGW(TAG,"Reset deferred: %s",esp_err_to_name(err)); continue; }
+                }
                 esp_restart();
             }
         }
@@ -129,6 +132,7 @@ void task(void *) {
         }
         std::snprintf(network.ip,sizeof(network.ip),IPSTR,IP2STR(&ip.ip));
         network_publish(network);
+        system_heartbeat(CriticalTask::Wifi);
         vTaskDelayUntil(&wake,pdMS_TO_TICKS(250));
     }
 }

@@ -214,7 +214,7 @@ static void render_tests(const char *directory) {
     UiModel m{};m.config=config_defaults();m.system=SYSTEM_RUNNING;m.synced=m.connected=true;
     m.salary=at(m.config,14,37,21);std::strcpy(m.clock,"14:37:21");std::strcpy(m.ap_ssid,"SalaryThief-A31F");
     std::strcpy(m.date,"2026/09/23");
-    std::strcpy(m.ssid,"Office Wi-Fi");std::strcpy(m.ip,"192.168.1.25");std::strcpy(m.idf,"v5.5.0");std::strcpy(m.firmware,"1.1.0");
+    std::strcpy(m.ssid,"Office Wi-Fi");std::strcpy(m.ip,"192.168.1.25");std::strcpy(m.idf,"v5.5.0");std::strcpy(m.firmware,APP_FIRMWARE_VERSION);
     m.rssi=-53;m.free_heap=110000;m.free_psram=7300000;m.uptime=2451;
     CoinPhysicsEngine p(17);
     const auto pile=[&]() {

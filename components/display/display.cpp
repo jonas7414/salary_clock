@@ -148,6 +148,7 @@ void task(void *) {
         const uint32_t elapsed=uint32_t(esp_timer_get_time()-frame_start);
         if (elapsed>FRAME_MS*1000U) { ++dropped; wake=xTaskGetTickCount(); }
         display_publish(elapsed,dropped,!back);
+        system_heartbeat(CriticalTask::Display);
         vTaskDelayUntil(&wake,pdMS_TO_TICKS(FRAME_MS));
     }
 }

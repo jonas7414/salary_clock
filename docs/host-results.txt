@@ -1,0 +1,4 @@
+PASS: 452704 checks (salary, Gregorian calendar, configuration, button, Wi-Fi policy, physics, animation, rendering)
+PASS: 1087162 coin stacking checks
+PASS: 17 NVS checks (first boot, persistence, corruption, version mismatch, commit failure, reset, recovery)
+PASS: 35 JSON/API settings checks (types, ranges, schedules, duplicates, version, credentials, oversized bodies)

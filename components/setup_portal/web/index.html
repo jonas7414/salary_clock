@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>薪水小偷計算器 · 設定</title>
+<style>
+:root{color-scheme:dark;--bg:#10171b;--panel:#1b252b;--ink:#f6f4e9;--muted:#a8b7bf;--gold:#f4c462;--line:#334148}
+*{box-sizing:border-box}[hidden]{display:none!important}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,sans-serif}main{max-width:760px;margin:auto;padding:36px 20px 48px}header{margin:0 0 30px}.eyebrow{color:var(--gold);font-size:12px;letter-spacing:.18em}h1{font-size:29px;letter-spacing:.04em;margin:8px 0}p{color:var(--muted);margin:6px 0}fieldset{border:1px solid var(--line);border-radius:16px;background:var(--panel);padding:22px;margin:24px 0}legend{padding:0 8px;font-weight:700}label{display:block;font-size:14px;color:var(--muted);margin:8px 0}input,select{width:100%;background:#10191e;border:1px solid #46555d;border-radius:8px;padding:12px;color:var(--ink);font:inherit}input:focus,button:focus,select:focus{outline:2px solid var(--gold);outline-offset:2px}.row{display:grid;grid-template-columns:1fr 1fr;gap:16px}.check{display:flex;align-items:center;gap:9px}.check input{width:auto;accent-color:var(--gold)}.days{display:flex;gap:14px;flex-wrap:wrap}.days label{color:var(--ink)}button{border:1px solid var(--line);border-radius:8px;padding:11px 16px;background:#2c3a42;color:var(--ink);font:inherit;cursor:pointer}button:disabled{opacity:.5;cursor:wait}.primary{background:var(--gold);color:#152026;border:none;font-weight:700}.actions{display:flex;gap:12px;flex-wrap:wrap}.hint{font-size:12px}#message{position:sticky;bottom:12px;white-space:pre-wrap;background:#22332e;border-radius:10px;padding:14px;border:1px solid #486258}#message:empty{display:none}#message.error{background:#432a2b;border-color:#b56a6a}#networks{display:grid;gap:8px;margin:12px 0}.network{text-align:left;display:flex;justify-content:space-between;gap:8px}.network span:first-child{overflow-wrap:anywhere}.network small{white-space:nowrap;color:var(--muted)}details{color:var(--muted);margin-top:26px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}.danger{color:#ffb3a6}@media(max-width:480px){.row{grid-template-columns:1fr}h1{font-size:25px}fieldset{padding:16px}}
+</style></head><body><main>
+<header><div class="eyebrow">SALARY THIEF CALCULATOR</div><h1>薪水小偷計算器</h1><p>設定好，今天就開始偷。</p><p class="hint">設定完成後，裝置會重新開機並同步網路時間。</p></header>
+<form id="form">
+<fieldset><legend>01 / 連上網路</legend><button id="scan" type="button">Scan Wi-Fi · 掃描附近網路</button><div id="networks"></div>
+<label for="ssid">SSID · 也可以手動輸入隱藏網路</label><input id="ssid" required maxlength="32" autocomplete="off">
+<label for="password">Password</label><input id="password" type="password" maxlength="64" autocomplete="new-password">
+<label class="check"><input id="show" type="checkbox">Show Password · 顯示密碼</label>
+<label class="check" id="keep-label" hidden><input id="keep" type="checkbox">保留裝置內既有密碼</label><p class="hint">開放網路請留空密碼，並取消「保留既有密碼」。不支援企業帳號登入。</p></fieldset>
+<fieldset><legend>02 / 每月偷薪目標</legend><label for="salary">Monthly Salary · 月薪（NT$）</label><input id="salary" type="number" min="1" max="1000000000" step="1" required value="40000">
+<label>Work Days · 工作日</label><div class="days" id="days"></div><p class="hint">依照每個月實際星期分布計算，不扣除國定假日。</p></fieldset>
+<fieldset><legend>03 / 每日排程</legend><div class="row">
+<div><label for="work_start">Work Start · 上班</label><input id="work_start" type="time" required value="09:00"></div>
+<div><label for="work_end">Work End · 下班</label><input id="work_end" type="time" required value="18:00"></div>
+<div><label for="lunch_start">Lunch Start · 午休開始</label><input id="lunch_start" type="time" required value="12:00"></div>
+<div><label for="lunch_end">Lunch End · 午休結束</label><input id="lunch_end" type="time" required value="13:00"></div></div>
+<label for="timezone">Timezone · 時區</label><select id="timezone"><option>Asia/Taipei</option><option>Asia/Tokyo</option><option>Asia/Hong_Kong</option><option>Asia/Singapore</option><option>UTC</option></select><p class="hint">午休不計薪。同一天的排程需依序排列，不支援跨午夜班別。</p></fieldset>
+<div class="actions"><button class="primary" id="save" type="submit" disabled>儲存並重新開機</button><button id="reboot" type="button">重新開機</button></div></form>
+<details><summary>裝置資訊與重設</summary><pre id="status">讀取中…</pre><button class="danger" id="reset" type="button">清除設定並重設</button><p class="hint">此設定 AP 為開放網路。完成設定並重新開機後，AP 與設定頁會關閉。</p></details>
+<p id="message" role="status" aria-live="polite"></p></main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id), times=['work_start','lunch_start','lunch_end','work_end'];
+let originalSsid='',saved=false;
+const dayNames=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+dayNames.forEach((name,i)=>{const label=document.createElement('label');label.className='check';const input=document.createElement('input');input.type='checkbox';input.value=1<<i;input.checked=i<5;input.setAttribute('aria-label',name);label.append(input,document.createTextNode(['一','二','三','四','五','六','日'][i]));$('days').append(label)});
+function message(text,bad=false){$('message').textContent=text;$('message').classList.toggle('error',bad)}
+async function api(path,data){const response=await fetch(path,data===undefined?{cache:'no-store'}:{method:'POST',headers:{'Content-Type':'application/json','X-SalaryThief-Request':'setup'},body:JSON.stringify(data)});const body=await response.json();if(!response.ok)throw Error(body.error||'裝置無法處理要求');return body}
+$('show').onchange=()=>{$('password').type=$('show').checked?'text':'password'};
+$('keep').onchange=()=>{$('password').disabled=$('keep').checked};
+$('ssid').oninput=()=>{if($('ssid').value!==originalSsid){$('keep').checked=false;$('password').disabled=false}};
+$('scan').onclick=async()=>{$('scan').disabled=true;message('正在掃描 Wi-Fi…');try{const data=await api('/api/scan');$('networks').replaceChildren();for(const network of data.networks){const button=document.createElement('button');button.type='button';button.className='network';const ssid=document.createElement('span'),detail=document.createElement('small');ssid.textContent=network.ssid||'隱藏網路（請手動輸入）';detail.textContent=network.rssi+' dBm · '+network.security;button.append(ssid,detail);button.onclick=()=>{if(network.ssid){$('ssid').value=network.ssid;$('ssid').oninput()}};$('networks').append(button)}message('找到 '+data.total+' 個網路，最多顯示 20 個。')}catch(e){message(e.message,true)}finally{$('scan').disabled=false}};
+$('form').onsubmit=async event=>{event.preventDefault();if(saved)return;const body={config_version:1,wifi_ssid:$('ssid').value,monthly_salary:Number($('salary').value),work_days:[...$('days').querySelectorAll('input:checked')].reduce((mask,i)=>mask|Number(i.value),0),timezone:$('timezone').value};for(const key of times)body[key]=$(key).value;if(!(body.work_start<body.lunch_start&&body.lunch_start<body.lunch_end&&body.lunch_end<body.work_end)){message('時間順序需為：上班 < 午休開始 < 午休結束 < 下班。',true);return}if(!body.work_days){message('請至少選一個工作日。',true);return}if(!Number.isInteger(body.monthly_salary)||body.monthly_salary<=0){message('請填寫正整數月薪。',true);return}if(new TextEncoder().encode(body.wifi_ssid).length>32){message('SSID 最多 32 bytes。',true);return}if(!$('keep').checked)body.wifi_password=$('password').value;$('save').disabled=true;try{await api('/api/config',body);saved=true;$('password').value='';message('設定已儲存，正在重新開機。請查看裝置畫面。');await api('/api/reboot',{})}catch(e){message(saved?'設定已儲存。請按「重新開機」套用設定。':e.message,true)}finally{if(!saved)$('save').disabled=false}};
+$('reboot').onclick=async()=>{try{await api('/api/reboot',{});message('正在重新開機，請查看裝置畫面。')}catch(e){message(e.message,true)}};
+$('reset').onclick=async()=>{if(!confirm('確定清除 Wi-Fi 與薪資設定？'))return;try{await api('/api/reset',{});message('正在重設。請稍後重新連接設定 AP。')}catch(e){message(e.message,true)}};
+async function load(){try{const c=await api('/api/config');$('ssid').value=originalSsid=c.wifi_ssid;$('salary').value=c.monthly_salary;$('timezone').value=c.timezone;for(const key of times)$(key).value=c[key];for(const i of $('days').querySelectorAll('input'))i.checked=!!(c.work_days&Number(i.value));$('keep-label').hidden=!c.has_password;$('keep').checked=c.has_password;$('password').disabled=c.has_password;$('save').disabled=false;const state=await api('/api/status');$('status').textContent=JSON.stringify(state,null,2)}catch(e){message('讀取失敗：'+e.message+'。請重新整理頁面。',true)}}load();
+</script></body></html>

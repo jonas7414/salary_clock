@@ -1,0 +1,292 @@
+#include "ui_renderer.h"
+#include "font_data.h"
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+namespace {
+constexpr uint16_t rgb(unsigned r,unsigned g,unsigned b) { return ((r>>3)<<11)|((g>>2)<<5)|(b>>3); }
+constexpr auto BG=rgb(13,23,29), PANEL=rgb(23,36,43), INK=rgb(245,241,222), MUTED=rgb(146,166,174),
+    GOLD=rgb(248,203,103), LINE=rgb(43,61,69), GREEN=rgb(133,208,176);
+class Canvas {
+public:
+    Canvas(uint16_t *p,int offset,int rows):pixels(p),top(offset),bottom(offset+rows){}
+    void clip(int x=0,int y=0,int w=SCREEN_WIDTH,int h=SCREEN_HEIGHT) { left=x;right=x+w;clip_top=y;clip_bottom=y+h; }
+    void rect(int x,int y,int w,int h,uint16_t color) {
+        const int x0=std::max(left,x), x1=std::min(right,x+w);
+        const int y0=std::max(std::max(top,clip_top),y), y1=std::min(std::min(bottom,clip_bottom),y+h);
+        if (x0>=x1 || y0>=y1) return;
+        for (int row=y0;row<y1;++row) std::fill(pixels+(row-top)*SCREEN_WIDTH+x0,pixels+(row-top)*SCREEN_WIDTH+x1,color);
+    }
+    void ellipse(float x,float y,float rx,float ry,uint16_t color) {
+        if (rx<.5f || ry<.5f) return;
+        const int first=std::max(top,int(std::floor(y-ry))), last=std::min(bottom-1,int(std::ceil(y+ry)));
+        for (int row=first;row<=last;++row) {
+            const float dy=(row-y)/ry;
+            if (std::abs(dy)>1) continue;
+            const float span=rx*std::sqrt(std::max(0.f,1-dy*dy));
+            const int start=int(std::ceil(x-span)),end=int(std::floor(x+span));
+            rect(start,row,end-start+1,1,color);
+        }
+    }
+    void pixel(int x,int y,uint16_t color,uint8_t alpha=15) {
+        if (x<left || x>=right || y<std::max(top,clip_top) || y>=std::min(bottom,clip_bottom) || !alpha) return;
+        auto &dst=pixels[(y-top)*SCREEN_WIDTH+x];
+        if (alpha==15) { dst=color; return; }
+        const unsigned a=alpha,b=15-alpha;
+        dst=uint16_t((((((color>>11)&31)*a+((dst>>11)&31)*b)/15)<<11) |
+            (((((color>>5)&63)*a+((dst>>5)&63)*b)/15)<<5) |
+            (((color&31)*a+(dst&31)*b)/15));
+    }
+    static uint32_t next(const char *&s) {
+        const auto a=static_cast<uint8_t>(*s++);
+        if (a<128) return a;
+        int n=(a&0xe0)==0xc0 ? 1 : (a&0xf0)==0xe0 ? 2 : (a&0xf8)==0xf0 ? 3 : 0;
+        if (!n) return '?';
+        uint32_t code=a & (n==1?31:n==2?15:7);
+        for (int i=0;i<n;++i) { if (!*s || (static_cast<uint8_t>(*s)&0xc0)!=0x80) return '?'; code=(code<<6)|(static_cast<uint8_t>(*s++)&63); }
+        return code;
+    }
+    static const Glyph *glyph(uint32_t code,int size) {
+        // Sorted by (font size, codepoint); no allocation or text layout cache needed.
+        size_t lo=0,hi=GLYPH_COUNT;
+        const uint32_t key=(uint32_t(size)<<21)|code;
+        while (lo<hi) { const size_t mid=(lo+hi)/2; if (FONT_GLYPHS[mid].key<key) lo=mid+1; else hi=mid; }
+        return lo<GLYPH_COUNT && FONT_GLYPHS[lo].key==key ? &FONT_GLYPHS[lo] : nullptr;
+    }
+    static int width(const char *s,int size) {
+        int w=0;
+        while (*s) { auto *g=glyph(next(s),size); if (!g) g=glyph('?',size); if (g) w+=g->advance; }
+        return w;
+    }
+    void text(int x,int y,const char *s,int size,uint16_t color,int max_width=320) {
+        const int right=x+max_width;
+        while (*s) {
+            auto *g=glyph(next(s),size); if (!g) g=glyph('?',size); if (!g) continue;
+            if (x+g->advance>right) break;
+            if (y+g->top+g->height>top && y+g->top<bottom) for (int row=0;row<g->height;++row) for (int col=0;col<g->width;++col) {
+                const unsigned i=row*g->width+col;
+                const uint8_t packed=FONT_PIXELS[g->offset+i/2];
+                pixel(x+g->left+col,y+g->top+row,color,i%2 ? packed&15 : packed>>4);
+            }
+            x+=g->advance;
+        }
+    }
+    void center(int cx,int y,const char *s,int size,uint16_t color) { text(cx-width(s,size)/2,y,s,size,color); }
+private:
+    uint16_t *pixels; int top,bottom;
+    int left=0,right=SCREEN_WIDTH,clip_top=0,clip_bottom=SCREEN_HEIGHT;
+};
+void money(Canvas &c,int x,int y,double amount,int max_width=182,uint16_t color=GOLD) {
+    char value[32]; std::snprintf(value,sizeof(value),"%.2f",amount);
+    int size=32;
+    if (Canvas::width(value,size)>max_width) size=24;
+    if (Canvas::width(value,size)>max_width) size=16;
+    c.text(x,y,value,size,color,max_width);
+}
+void duration(char *buffer,size_t capacity,uint32_t seconds) {
+    std::snprintf(buffer,capacity,"%02lu:%02lu:%02lu",static_cast<unsigned long>(seconds/3600),
+        static_cast<unsigned long>(seconds/60%60),static_cast<unsigned long>(seconds%60));
+}
+const char *work_label(WorkState state) {
+    switch(state) {
+        case WORK_STATE_DAY_OFF:return "今天不用偷";
+        case WORK_STATE_BEFORE_WORK:return "還沒開偷";
+        case WORK_STATE_WORKING_MORNING:case WORK_STATE_WORKING_AFTERNOON:return "正在偷薪水";
+        case WORK_STATE_LUNCH:return "午休中，等等繼續偷";
+        case WORK_STATE_AFTER_WORK:return "下班偷完了";
+        default:return "等待時間同步";
+    }
+}
+void coin(Canvas &c,const Coin &coin) {
+    // Face-on at rest: visible circular rims meet where the physics colliders meet.
+    const float spin=coin.sleeping ? 0.f : std::min(1.f,std::abs(coin.angularVelocity)/3.f);
+    const float face=1.f-spin*(1.f-std::max(.35f,std::abs(std::cos(coin.rotation))));
+    const float rx=coin.radius*face*(1+coin.squash*.65f),ry=coin.radius*(1-coin.squash);
+    const float height=std::max(0.f,CoinPhysicsEngine::FLOOR-coin.y-coin.radius);
+    if (height>2) c.ellipse(coin.x,CoinPhysicsEngine::FLOOR+2,std::max(3.f,coin.radius-height*.08f),1,rgb(7,13,17));
+    c.ellipse(coin.x+1,coin.y+1,rx,ry,rgb(145,87,31));
+    c.ellipse(coin.x,coin.y,rx,ry,rgb(251,211,117));
+    c.ellipse(coin.x,coin.y,rx-1,ry-1,rgb(166,107,37));
+    c.ellipse(coin.x,coin.y,rx-2,ry-2,rgb(231,167,58));
+    c.ellipse(coin.x,coin.y-1,rx-3,ry-3,rgb(248,196,81));
+    // Short moving highlight arc, with an inset rim and a compressed dollar mark.
+    for (int i=0;i<14;++i) {
+        const float angle=-2.7f+i*.07f+std::sin(coin.rotation)*.22f;
+        c.pixel(int(coin.x+std::cos(angle)*(rx-1)),int(coin.y+std::sin(angle)*(ry-1)),INK);
+    }
+    if (face>.28f) {
+        const int cx=int(coin.x), cy=int(coin.y);
+        const int w=std::max(1,int(coin.radius*.25f*face)), h=std::max(3,int(coin.radius*.5f));
+        const auto ink=rgb(147,88,26);
+        c.rect(cx,cy-h-1,1,h*2+3,ink);
+        c.rect(cx-w,cy-h,w*2+1,1,ink);c.rect(cx-w,cy-h,1,h,ink);
+        c.rect(cx-w,cy,w*2+1,1,ink);c.rect(cx+w,cy,1,h,ink);
+        c.rect(cx-w,cy+h,w*2+1,1,ink);
+    }
+}
+void lunch_scene(Canvas &c,uint32_t milliseconds) {
+    const uint32_t cycle=milliseconds%4800;
+    const float phase=float(cycle)/4800.f;
+    const int sway=int(std::lround(std::sin(phase*6.2831853f)*5.f));
+    const int bob=int(std::lround(std::sin(phase*6.2831853f)*2.f));
+    const auto crust=rgb(189,112,45), bun=rgb(244,185,91), sesame=rgb(255,226,167);
+    const auto patty=rgb(111,61,41), tomato=rgb(224,96,74), lettuce=rgb(118,187,102);
+    c.ellipse(259,132,43,4,rgb(7,13,17));
+    c.ellipse(259,127,44,6,rgb(66,89,96));
+    c.ellipse(259,125,40,4,rgb(182,199,196));
+    c.ellipse(259,125,32,2,rgb(116,145,146));
+
+    // Keep the burger whole and gently sway it above the stationary plate.
+    c.ellipse(259+sway,110+bob,33,11,crust);
+    c.ellipse(259+sway,108+bob,33,9,bun);
+    c.rect(227+sway,99+bob,65,10,patty);
+    c.ellipse(259+sway,100+bob,33,5,patty);
+    c.rect(229+sway,94+bob,61,5,GOLD);
+    for (int row=0;row<7;++row) c.rect(268+row+sway,98+bob+row,14-row*2,1,GOLD);
+    c.rect(227+sway,89+bob,65,6,tomato);
+    for (int x=231;x<291;x+=10) c.ellipse(float(x+sway),88.f+bob,7,4,lettuce);
+    c.ellipse(259+sway,80+bob,34,18,crust);
+    c.ellipse(259+sway,77+bob,33,17,bun);
+    c.rect(227+sway,80+bob,65,7,bun);
+    const int seeds[][2]={{241,70},{253,65},{269,68},{279,74},{235,77}};
+    for (const auto &seed:seeds) c.ellipse(float(seed[0]+sway),float(seed[1]+bob),2,1,sesame);
+    c.ellipse(247+sway,79.f+bob,2,2,patty);c.ellipse(260+sway,79.f+bob,2,2,patty);
+    c.rect(252+sway,82+bob,4,1,patty);
+}
+void rest_scene(Canvas &c,uint32_t milliseconds) {
+    const float phase=float(milliseconds%4000)/4000.f;
+    const float breath=.5f-.5f*std::cos(phase*6.2831853f);
+    const auto fur=rgb(222,169,106), highlight=rgb(245,200,139), stripe=rgb(177,118,66);
+    const auto cushion=rgb(69,116,132), cushion_light=rgb(95,149,158);
+    // Crescent moon, cushion and a sleeping cat with a slow breathing motion.
+    c.ellipse(227,52,10,10,GOLD);c.ellipse(231,48,9,9,BG);
+    c.pixel(248,45,MUTED);c.pixel(297,67,MUTED);
+    c.ellipse(261,135,44,4,rgb(7,13,17));
+    c.ellipse(261,129,44,8,cushion);c.ellipse(261,126,42,6,cushion_light);
+    c.ellipse(266,111-breath,32,18+breath,fur);
+    c.ellipse(263,117,23,10,highlight);
+    for (int x=262;x<=278;x+=8) c.ellipse(float(x),98-breath,2,4,stripe);
+    c.ellipse(282,115,14,12,stripe);c.ellipse(282,113,13,11,fur);
+    c.ellipse(283,113,7,6,stripe);c.ellipse(281,111,7,5,fur);
+    const int head_y=106-int(std::lround(breath));
+    for (int row=0;row<15;++row) {
+        c.rect(225-row/3,head_y-24+row,2+row,1,fur);
+        c.rect(248-row/2,head_y-24+row,2+row/2,1,fur);
+    }
+    for (int row=0;row<8;++row) {
+        c.rect(226,head_y-19+row,1+row/2,1,rgb(201,130,103));
+        c.rect(247-row/3,head_y-19+row,1+row/3,1,rgb(201,130,103));
+    }
+    c.ellipse(237,float(head_y),19,15,fur);
+    c.ellipse(238,float(head_y+6),12,7,highlight);
+    for (int x:{227,241}) {
+        c.rect(x,head_y-1,2,2,stripe);c.rect(x+2,head_y+1,5,2,stripe);
+        c.rect(x+7,head_y-1,2,2,stripe);
+    }
+    c.rect(237,head_y+6,3,2,stripe);c.rect(238,head_y+8,1,2,stripe);
+    c.rect(219,head_y+5,7,1,stripe);c.rect(219,head_y+8,6,1,stripe);
+    c.ellipse(240,123,8,4,highlight);c.ellipse(256,124,7,3,highlight);
+    for (int i=0;i<3;++i) {
+        const float drift=std::fmod(phase+float(i)/3.f,1.f);
+        c.text(259+int(drift*31),78-int(drift*35),"Z",drift<.5f?10:12,drift>.8f?MUTED:INK);
+    }
+}
+void header(Canvas &c,const UiModel &m) {
+    c.text(12,6,"薪水小偷計算器",12,MUTED);
+    const char *date=m.synced?m.date:"----/--/--";
+    c.text(226-Canvas::width(date,12),6,date,12,MUTED);
+    c.text(238,6,m.clock,12,INK);
+    c.rect(12,26,296,1,LINE);
+}
+void footer(Canvas &c,const UiModel &m) {
+    for (unsigned i=0;i<4;++i) c.ellipse(286+i*7,160,2,2,i==m.page ? GOLD : LINE);
+}
+}
+void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
+    Canvas c(pixels,offset,rows); c.rect(0,0,320,170,BG);
+    header(c,m); char buf[80];
+    if (m.system==SYSTEM_SETUP_MODE) {
+        c.text(14,37,"SETUP MODE",24,GOLD);
+        c.text(14,74,"Wi-Fi",12,MUTED);c.text(62,73,m.ap_ssid[0]?m.ap_ssid:"SalaryThief-....",16,INK);
+        c.text(14,100,"Open",12,MUTED);c.text(62,98,"192.168.4.1",24,INK);
+        c.text(14,139,"連上設定網路，填好今天的偷薪計畫",12,MUTED);
+    } else if (m.system==SYSTEM_ERROR) {
+        c.text(14,42,"SYSTEM ERROR",24,GOLD);c.text(14,82,"請查看 USB 記錄並重新開機",16,INK);
+    } else if (!m.synced) {
+        c.text(14,40,"準備開始偷薪水",24,GOLD);
+        c.text(14,83,"Waiting for time sync...",16,INK);
+        c.text(14,112,m.connected ? "Wi-Fi connected / SNTP pending" :
+               m.associated ? "Wi-Fi linked / waiting for IP" : "Connecting to Wi-Fi...",12,MUTED);
+        c.text(14,141,m.sntp_wait_expired?"同步尚未成功，請檢查網路":"時間同步後開始計算",12,MUTED);
+    } else {
+        if (m.page==0) {
+            c.rect(198,34,1,106,LINE);
+            c.text(12,35,m.salary.work_state==WORK_STATE_AFTER_WORK?"今日偷到":
+                m.salary.work_state==WORK_STATE_BEFORE_WORK?"還沒開偷":"今天已偷到",16,INK);
+            c.text(12,59,"NT$",12,GREEN);
+            money(c,12,74-int(m.pulse*2),m.salary.earned_money,182,GREEN);
+            if (m.salary.work_state==WORK_STATE_BEFORE_WORK) {
+                duration(buf,sizeof(buf),m.salary.seconds_before_work);
+                c.text(12,117,"距離上班",12,MUTED); c.text(71,117,buf,12,INK);
+            } else c.text(12,118,work_label(m.salary.work_state),12,GREEN);
+            c.clip(200,29,118,116);
+            if (m.salary.work_state==WORK_STATE_LUNCH) lunch_scene(c,m.animation_ms);
+            else if (m.salary.work_state==WORK_STATE_AFTER_WORK) rest_scene(c,m.animation_ms);
+            else {
+                // Small scale marks keep the pile within a quiet instrument-like area.
+                for (int y=51;y<140;y+=22) c.rect(307,y,5,1,LINE);
+                c.rect(204,140,109,1,LINE);
+                if (m.physics) for (const auto &v:m.physics->coins()) if(v.active) coin(c,v);
+            }
+            c.clip();
+            c.rect(12,148,252,4,LINE); c.rect(12,148,int(252*m.salary.progress),4,GOLD);
+            std::snprintf(buf,sizeof(buf),"%.0f%%",m.salary.progress*100); c.text(270,142,buf,12,INK);
+            c.text(12,157,m.connected?"ONLINE":"OFFLINE / CLOCK RUNNING",10,MUTED);
+        } else if (m.page==1) {
+            c.text(12,37,"還能偷多少",16,INK);
+            c.text(12,63,"今天還能偷 / NT$",12,MUTED); money(c,12,83,m.salary.remaining_money,188);
+            c.rect(206,38,1,100,LINE);
+            c.text(220,48,"剩餘工時",16,INK); duration(buf,sizeof(buf),m.salary.remaining_work_seconds);
+            c.text(218,80,buf,16,GOLD);c.text(220,109,"已排除午休",12,MUTED);
+            c.text(12,142,work_label(m.salary.work_state),12,GREEN);
+        } else if (m.page==2) {
+            c.text(12,35,"本月戰績",16,INK);
+            std::snprintf(buf,sizeof(buf),"NT$ %lu",static_cast<unsigned long>(m.config.monthly_salary));
+            c.text(12,61,"月薪",12,MUTED); c.text(12,80,buf,16,GOLD);
+            std::snprintf(buf,sizeof(buf),"%d / %d",m.salary.work_day_index,m.salary.monthly_work_days);
+            c.text(12,110,"今天 / 本月工作日",12,MUTED); c.text(12,130,buf,16,INK);
+            c.rect(166,37,1,113,LINE);
+            const char *labels[]={"每日","每小時","每分鐘","每秒"};
+            const double values[]={m.salary.daily_salary,m.salary.salary_per_second*3600,m.salary.salary_per_second*60,m.salary.salary_per_second};
+            for(int i=0;i<4;++i) {
+                c.text(179,39+i*29,labels[i],12,MUTED);
+                std::snprintf(buf,sizeof(buf),i==3?"NT$ %.4f":"NT$ %.2f",values[i]);
+                const int size=Canvas::width(buf,12)>132 ? 10 : 12;
+                c.text(179,53+i*29,buf,size,INK,132);
+            }
+        } else {
+            c.text(12,33,"系統資訊",16,INK);
+            c.text(12,55,"SSID",10,MUTED);c.text(52,53,m.ssid,12,INK,254);
+            std::snprintf(buf,sizeof(buf),"IP %s   RSSI %d dBm",m.ip,m.rssi);c.text(12,73,buf,10,INK);
+            std::snprintf(buf,sizeof(buf),"SNTP %s   IDF %s",m.synced?"SYNCED":"WAITING",m.idf);c.text(12,88,buf,10,INK);
+            std::snprintf(buf,sizeof(buf),"FW %s   Config v%lu   Up %lus",m.firmware,static_cast<unsigned long>(m.config.version),static_cast<unsigned long>(m.uptime));c.text(12,103,buf,10,INK);
+            std::snprintf(buf,sizeof(buf),"Heap %luK   PSRAM %luK   %s",static_cast<unsigned long>(m.free_heap/1024),static_cast<unsigned long>(m.free_psram/1024),m.partial?"PARTIAL":"DOUBLE");c.text(12,118,buf,10,INK);
+            std::snprintf(buf,sizeof(buf),"Frame %luus   Missed %lu",static_cast<unsigned long>(m.frame_us),static_cast<unsigned long>(m.dropped_frames));c.text(12,133,buf,10,MUTED);
+            c.text(12,152,"Long press: 5 sec Setup / 10 sec Reset",10,GOLD);
+        }
+        footer(c,m);
+    }
+    if (m.held_ms>=500) {
+        c.rect(40,36,240,105,PANEL);c.rect(40,36,240,2,GOLD);
+        if (m.held_ms<5000) {
+            c.center(160,49,"繼續按住進入設定",16,INK);
+            std::snprintf(buf,sizeof(buf),"%lu",static_cast<unsigned long>((5000-m.held_ms+999)/1000));
+            c.center(160,78,buf,32,GOLD);
+        } else {
+            c.center(160,50,"放開進入設定",16,GOLD);
+            std::snprintf(buf,sizeof(buf),"%lu",static_cast<unsigned long>(m.held_ms>=10000 ? 0 : (10000-m.held_ms+999)/1000));
+            c.center(160,77,buf,24,INK);c.center(160,111,"繼續按住將清除設定",12,MUTED);
+        }
+    }
+}

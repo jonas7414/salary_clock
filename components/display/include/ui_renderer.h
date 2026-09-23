@@ -1,0 +1,24 @@
+#pragma once
+#include "app_types.h"
+#include "coin_physics.h"
+#include <cstddef>
+#include <cstdint>
+constexpr int SCREEN_WIDTH=320, SCREEN_HEIGHT=170;
+struct UiModel {
+    AppConfig config{};
+    SalaryStatus salary{};
+    SystemState system{SYSTEM_BOOTING};
+    unsigned page{};
+    char date[16]{"----/--/--"};
+    char clock[16]{"--:--:--"};
+    char ssid[33]{}, ip[16]{}, ap_ssid[33]{};
+    char idf[32]{}, firmware[16]{};
+    int rssi{};
+    uint32_t held_ms{}, free_heap{}, free_psram{}, uptime{}, dropped_frames{}, frame_us{};
+    uint32_t animation_ms{};
+    bool synced{}, connected{}, associated{}, sntp_wait_expired{}, partial{};
+    float pulse{};
+    const CoinPhysicsEngine *physics{};
+};
+// Renders either a complete frame or a horizontal strip in screen coordinates.
+void ui_render(uint16_t *pixels,int y_offset,int rows,const UiModel &model);

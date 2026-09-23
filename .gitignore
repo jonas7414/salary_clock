@@ -1,0 +1,9 @@
+.pio/
+.tools/
+.artifacts/
+release/
+sdkconfig.*
+!sdkconfig.defaults
+!sdkconfig.no_psram.defaults
+__pycache__/
+.vscode/

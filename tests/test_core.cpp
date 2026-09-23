@@ -206,6 +206,69 @@ static void physics_tests() {
     s=at(config_defaults(),18,0);anim.update(s,42000000,.04f);CHECK(count(anim.physics())==resumed);
     UiAnimation boot;boot.update(s,0,.04f);CHECK(count(boot.physics())==0);
 }
+static void money_gain_tests() {
+    UiAnimation animation;
+    auto s=at(config_defaults(),10,0);
+    s.earned_money=100.00;
+    animation.update(s,0,.04f);CHECK(animation.gain_money()==0);
+    s.earned_money=100.22;
+    animation.update(s,1000000,.04f);
+    CHECK(std::abs(animation.gain_money()-.22)<1e-9 && animation.gain_progress()==0);
+    animation.update(s,1450000,.04f);
+    CHECK(animation.gain_progress()==.5f && std::abs(animation.gain_money()-.22)<1e-9);
+    // Real elapsed time expires a popup even if the display missed many frames.
+    animation.update(s,1900000,.04f);CHECK(animation.gain_money()==0);
+    const auto pulse_before=animation.pulse();
+    s.earned_money=100.224;
+    animation.update(s,2000000,.04f);CHECK(animation.gain_money()==0 && animation.pulse()<pulse_before);
+    s.earned_money=100.226;
+    animation.update(s,3000000,.04f);CHECK(std::abs(animation.gain_money()-.01)<1e-9);
+    s.earned_money=100.45;
+    animation.update(s,3200000,.04f);
+    CHECK(std::abs(animation.gain_money()-.22)<1e-9 && animation.gain_progress()==0);
+    s.earned_money=90;
+    animation.update(s,3300000,.04f);CHECK(animation.gain_money()==0 && animation.pulse()==0);
+    s.earned_money=90.22;animation.update(s,3400000,.04f);
+    ++s.date_key;s.earned_money=120;
+    animation.update(s,3500000,.04f);CHECK(animation.gain_money()==0 && animation.pulse()==0);
+    // The last paid second can arrive exactly when the lunch/rest scene starts.
+    s.work_state=WORK_STATE_LUNCH;s.earned_money=120.22;
+    animation.update(s,4000000,.04f);CHECK(std::abs(animation.gain_money()-.22)<1e-9);
+    animation.update(s,5000000,.04f);CHECK(animation.gain_money()==0);
+    s.work_state=WORK_STATE_NO_TIME;s.date_key=0;s.earned_money=0;
+    animation.update(s,6000000,.04f);CHECK(animation.gain_money()==0);
+    s=at(config_defaults(),14,0);
+    animation.update(s,7000000,.04f);CHECK(animation.gain_money()==0);
+}
+static void transition_tests() {
+    const auto config=config_defaults();
+    const int boundaries[]={config.work_start,config.lunch_start,config.lunch_end,config.work_end};
+    const WorkState states[]={WORK_STATE_WORKING_MORNING,WORK_STATE_LUNCH,
+        WORK_STATE_WORKING_AFTERNOON,WORK_STATE_AFTER_WORK};
+    for (int event=0;event<4;++event) {
+        UiAnimation animation;
+        const int minute=boundaries[event];
+        const auto before=at(config,(minute-1)/60,(minute-1)%60,59);
+        const auto after=at(config,minute/60,minute%60);
+        animation.update(before,0,.04f);CHECK(animation.transition_state()==WORK_STATE_NO_TIME);
+        animation.update(after,1000000,.04f);
+        CHECK(animation.transition_state()==states[event] && animation.transition_progress()==0);
+        animation.update(after,2600000,.04f);CHECK(animation.transition_progress()==.5f);
+        animation.update(after,4200000,.04f);CHECK(animation.transition_state()==WORK_STATE_NO_TIME);
+        animation.update(after,5000000,.04f);CHECK(animation.transition_state()==WORK_STATE_NO_TIME);
+        UiAnimation boot;boot.update(after,0,.04f);CHECK(boot.transition_state()==WORK_STATE_NO_TIME);
+        boot.update(before,1000000,.04f);CHECK(boot.transition_state()==WORK_STATE_NO_TIME);
+    }
+    // A custom schedule still triggers from salary states, not hard-coded times.
+    auto custom=config;custom.work_start=8*60;custom.lunch_start=11*60+30;
+    custom.lunch_end=12*60+15;custom.work_end=16*60+30;
+    UiAnimation animation;
+    animation.update(at(custom,11,29,59),0,.04f);
+    animation.update(at(custom,11,30),1000000,.04f);CHECK(animation.transition_state()==WORK_STATE_LUNCH);
+    animation.update(at(custom,11,30,0,24),1100000,.04f);CHECK(animation.transition_state()==WORK_STATE_NO_TIME);
+    animation.update(SalaryStatus{},1200000,.04f);
+    animation.update(at(custom,16,30),1300000,.04f);CHECK(animation.transition_state()==WORK_STATE_NO_TIME);
+}
 static void ppm(const std::string &path,const std::vector<uint16_t> &frame) {
     std::ofstream out(path,std::ios::binary);out<<"P6\n320 170\n255\n";
     for(auto p:frame) { const char rgb[]={char(((p>>11)&31)*255/31),char(((p>>5)&63)*255/63),char((p&31)*255/31)};out.write(rgb,3); }
@@ -283,9 +346,96 @@ static void render_tests(const char *directory) {
         // Hidden coins must never leak into the meal/rest scenes.
         m.physics=nullptr;ui_render(strip.data(),0,170,m);CHECK(full==strip);m.physics=&p;
     }
+    // Check popup motion, its bounds, theme palette and both rendering paths.
+    m.salary=at(m.config,14,37,21);std::strcpy(m.clock,"14:37:21");m.physics=nullptr;
+    for (int theme=0;theme<3;++theme) {
+        m.theme=static_cast<DisplayTheme>(theme);m.gain_money=0;
+        ui_render(full.data(),0,170,m);const auto baseline=full;
+        std::vector<uint16_t> first;
+        bool moved=false;
+        for (int frame=0;frame<25;++frame) {
+            m.gain_money=.22;m.gain_progress=std::min(1.f,float(frame*40000)/900000.f);
+            ui_render(full.data(),0,170,m);
+            if (frame==0) {first=full;CHECK(full!=baseline);}
+            else if (frame<20) moved|=full!=first;
+            for (int y=0;y<170;y+=10) {
+                ui_render(guard.data()+1,y,10,m);CHECK(guard.front()==0x55aa&&guard.back()==0x55aa);
+                std::copy(guard.begin()+1,guard.end()-1,strip.begin()+y*320);
+            }
+            CHECK(full==strip);
+            bool outside_unchanged=true;
+            for (int y=0;y<170;++y) for (int x=0;x<320;++x)
+                if (x<50 || x>=194 || y<51 || y>=80) outside_unchanged&=full[y*320+x]==baseline[y*320+x];
+            CHECK(outside_unchanged);
+            if (theme==2) {
+                auto colors=full;std::sort(colors.begin(),colors.end());
+                CHECK(std::unique(colors.begin(),colors.end())-colors.begin()<=4);
+            }
+            ppm(std::string(directory)+"/gain_"+std::to_string(theme)+"_"+std::to_string(frame)+".ppm",full);
+        }
+        CHECK(moved && full==baseline);
+    }
+}
+static void transition_render_tests(const char *directory) {
+    UiModel m{};m.config=config_defaults();m.system=SYSTEM_RUNNING;m.synced=true;
+    // Offline after synchronization must still show every schedule announcement.
+    std::strcpy(m.date,"2026/09/23");
+    const int minutes[]={m.config.work_start,m.config.lunch_start,m.config.lunch_end,m.config.work_end};
+    std::vector<uint16_t> full(320*170),strip(320*170),guard(320*10+2,0x55aa);
+    for (int event=0;event<4;++event) for (int theme=0;theme<3;++theme) {
+        m.theme=static_cast<DisplayTheme>(theme);m.page=0;m.transition_state=WORK_STATE_NO_TIME;
+        const int minute=minutes[event];
+        m.salary=at(m.config,minute/60,minute%60);
+        std::snprintf(m.clock,sizeof(m.clock),"%02d:%02d:00",minute/60,minute%60);
+        ui_render(full.data(),0,170,m);const auto baseline=full;
+        UiAnimation animation;
+        animation.update(at(m.config,(minute-1)/60,(minute-1)%60,59),0,.04f);
+        bool moved=false;
+        for (int frame=0;frame<85;++frame) {
+            animation.update(m.salary,1000000+frame*40000LL,.04f);
+            m.transition_state=animation.transition_state();m.transition_progress=animation.transition_progress();
+            ui_render(full.data(),0,170,m);
+            moved|=full!=baseline;
+            for (int y=0;y<170;y+=10) {
+                ui_render(guard.data()+1,y,10,m);CHECK(guard.front()==0x55aa&&guard.back()==0x55aa);
+                std::copy(guard.begin()+1,guard.end()-1,strip.begin()+y*320);
+            }
+            CHECK(full==strip);
+            bool outside_unchanged=true;
+            for (int y=0;y<170;++y) for (int x=0;x<320;++x)
+                if (x<8 || x>=312 || y<31 || y>=145) outside_unchanged&=full[y*320+x]==baseline[y*320+x];
+            CHECK(outside_unchanged);
+            if (theme==2) {
+                auto colors=full;std::sort(colors.begin(),colors.end());
+                CHECK(std::unique(colors.begin(),colors.end())-colors.begin()<=4);
+            }
+            if (theme==0 || frame==30)
+                ppm(std::string(directory)+"/transition_"+std::to_string(event)+"_"+
+                    std::to_string(theme)+"_"+std::to_string(frame)+".ppm",full);
+            if (frame==30) {
+                // The same opaque announcement appears over each of the four pages.
+                for (unsigned page=1;page<4;++page) {
+                    m.page=page;ui_render(strip.data(),0,170,m);
+                    for (int y=31;y<145;++y)
+                        CHECK(std::equal(full.begin()+y*320+8,full.begin()+y*320+312,strip.begin()+y*320+8));
+                }
+                m.page=0;
+            }
+        }
+        CHECK(moved && full==baseline);
+    }
+    // A transition never obscures setup, error, time-sync or button prompts.
+    for (int mode=0;mode<4;++mode) {
+        m.system=mode==0?SYSTEM_SETUP_MODE:mode==1?SYSTEM_ERROR:SYSTEM_RUNNING;
+        m.synced=mode!=2;m.held_ms=mode==3?700:0;
+        m.transition_state=WORK_STATE_NO_TIME;ui_render(full.data(),0,170,m);
+        m.transition_state=WORK_STATE_LUNCH;m.transition_progress=.4f;
+        ui_render(strip.data(),0,170,m);CHECK(full==strip);
+    }
 }
 int main(int argc,char **argv) {
     if(argc!=3)return 2;
-    config_tests();salary_tests(argv[1]);button_tests();wifi_tests();physics_tests();render_tests(argv[2]);
+    config_tests();salary_tests(argv[1]);button_tests();wifi_tests();physics_tests();money_gain_tests();transition_tests();
+    render_tests(argv[2]);transition_render_tests(argv[2]);
     std::printf("PASS: %u checks (salary, Gregorian calendar, configuration, button, Wi-Fi policy, physics, animation, rendering)\n",checks);
 }

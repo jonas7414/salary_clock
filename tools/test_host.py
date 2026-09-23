@@ -111,6 +111,20 @@ def main():
     for scene,count in (("lunch",120),("rest",100)):
         frames=[Image.open(OUT/f"{scene}_{i}.ppm").resize((640,340),Image.Resampling.NEAREST) for i in range(count)]
         frames[0].save(OUT/f"{scene}.gif",save_all=True,append_images=frames[1:],duration=40,loop=0)
-    print(f"Previews: {OUT / 'screens.png'}; {OUT / 'coin_physics.gif'}; {OUT / 'lunch.gif'}; {OUT / 'rest.gif'}")
+    gain_frames=[]
+    for i in range(25):
+        frame=Image.new("RGB",(980,170),"#e8ecee")
+        for theme in range(3):
+            frame.paste(Image.open(OUT/f"gain_{theme}_{i}.ppm"),(theme*330,0))
+        gain_frames.append(frame.resize((1470,255),Image.Resampling.NEAREST))
+    gain_frames[0].save(OUT/"money_gain.gif",save_all=True,append_images=gain_frames[1:],duration=40,loop=0)
+    transitions=Image.new("RGB",(1000,750),"#e8ecee")
+    for event,name in enumerate(("work_start", "lunch_start", "work_resume", "work_end")):
+        frames=[Image.open(OUT/f"transition_{event}_0_{i}.ppm").resize((640,340),Image.Resampling.NEAREST) for i in range(85)]
+        frames[0].save(OUT/f"{name}.gif",save_all=True,append_images=frames[1:],duration=40,loop=0)
+        for theme in range(3):
+            transitions.paste(Image.open(OUT/f"transition_{event}_{theme}_30.ppm"),(10+theme*330,10+event*185))
+    transitions.save(OUT/"transitions.png")
+    print(f"Previews: {OUT / 'screens.png'}; {OUT / 'coin_physics.gif'}; {OUT / 'lunch.gif'}; {OUT / 'rest.gif'}; {OUT / 'money_gain.gif'}; {OUT / 'transitions.png'}")
 
 if __name__=="__main__":main()

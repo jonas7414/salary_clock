@@ -19,6 +19,10 @@ struct UiModel {
     uint32_t animation_ms{};
     bool synced{}, connected{}, associated{}, sntp_wait_expired{}, partial{};
     float pulse{};
+    double gain_money{};
+    float gain_progress{1.f};
+    WorkState transition_state{WORK_STATE_NO_TIME};
+    float transition_progress{1.f};
     const CoinPhysicsEngine *physics{};
 };
 // Renders either a complete frame or a horizontal strip in screen coordinates.

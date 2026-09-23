@@ -139,6 +139,10 @@ void task(void *) {
         }
         animation.update(model.salary,frame_start,dt);
         model.pulse=animation.pulse();
+        model.gain_money=animation.gain_money();
+        model.gain_progress=animation.gain_progress();
+        model.transition_state=animation.transition_state();
+        model.transition_progress=animation.transition_progress();
         const auto err=flush(model);
         if (err!=ESP_OK) {
             ESP_LOGE("display","LCD transfer failed: %s",esp_err_to_name(err));

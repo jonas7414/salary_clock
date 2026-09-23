@@ -4,21 +4,49 @@
 void UiAnimation::update(const SalaryStatus &s,int64_t now,float dt) {
     if (!std::isfinite(dt)) dt=0;
     dt=std::clamp(dt,0.f,.05f);
-    if (s.date_key!=date_) {
+    if (!initialized_ || s.date_key!=date_) {
+        initialized_=true;
         date_=s.date_key; physics_.reset(); previous_=WORK_STATE_NO_TIME;
         last_earned_=s.earned_money;
+        pulse_=0; gain_money_=0; gain_progress_=1.f;
+        transition_state_=WORK_STATE_NO_TIME; transition_progress_=1.f;
     }
     const auto state=s.work_state;
     const bool working=state==WORK_STATE_WORKING_MORNING || state==WORK_STATE_WORKING_AFTERNOON;
     if (state!=previous_) {
+        transition_state_=WORK_STATE_NO_TIME; transition_progress_=1.f;
+        // Announce real schedule boundaries, never the first synced snapshot,
+        // a new date, a backwards clock correction or a jump over whole periods.
+        if ((previous_==WORK_STATE_BEFORE_WORK && state==WORK_STATE_WORKING_MORNING) ||
+            (previous_==WORK_STATE_WORKING_MORNING && state==WORK_STATE_LUNCH) ||
+            (previous_==WORK_STATE_LUNCH && state==WORK_STATE_WORKING_AFTERNOON) ||
+            (previous_==WORK_STATE_WORKING_AFTERNOON && state==WORK_STATE_AFTER_WORK)) {
+            transition_state_=state; transition_started_=now; transition_progress_=0;
+        }
         if (state==WORK_STATE_DAY_OFF || state==WORK_STATE_BEFORE_WORK) physics_.rest_coin();
         if (working && previous_==WORK_STATE_NO_TIME) {
             physics_.spawn(); physics_.spawn(); last_spawn_=now;
         }
         previous_=state;
     }
-    if (s.earned_money>last_earned_) pulse_=1.f;
-    else pulse_=std::max(0.f,pulse_-dt*4.f);
+    if (transition_state_!=WORK_STATE_NO_TIME) {
+        transition_progress_=std::clamp(float(now-transition_started_)/3200000.f,0.f,1.f);
+        if (transition_progress_>=1.f) transition_state_=WORK_STATE_NO_TIME;
+    }
+    // Match the visible two-decimal total, accumulating sub-cent increases until
+    // the displayed amount changes. Never show +0.00 or a boot-time windfall.
+    const double cents=std::round(s.earned_money*100)-std::round(last_earned_*100);
+    if (cents>0) {
+        pulse_=1.f; gain_money_=cents/100; gain_started_=now;
+    } else pulse_=std::max(0.f,pulse_-dt*4.f);
+    if (s.earned_money<last_earned_) {
+        pulse_=0; gain_money_=0; gain_progress_=1.f;
+    }
+    if (gain_money_>0) {
+        // Use elapsed time so a delayed frame cannot leave stale text onscreen.
+        gain_progress_=std::clamp(float(now-gain_started_)/900000.f,0.f,1.f);
+        if (gain_progress_>=1.f) gain_money_=0;
+    }
     if (working && std::floor(s.earned_money)>std::floor(last_earned_) && now-last_spawn_>=2500000) {
         physics_.spawn(); last_spawn_=now;
     }

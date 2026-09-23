@@ -34,12 +34,14 @@ public:
         return light<60?rgb(38,58,32):light<130?rgb(81,109,54):light<205?rgb(163,188,116):rgb(202,220,159);
     }
     void clip(int x=0,int y=0,int w=SCREEN_WIDTH,int h=SCREEN_HEIGHT) { left=x;right=x+w;clip_top=y;clip_bottom=y+h; }
-    void rect(int x,int y,int w,int h,uint16_t color) {
-        color=this->color(color);
+    void rect(int x,int y,int w,int h,uint16_t color,uint8_t opacity=15) {
         const int x0=std::max(left,x), x1=std::min(right,x+w);
         const int y0=std::max(std::max(top,clip_top),y), y1=std::min(std::min(bottom,clip_bottom),y+h);
         if (x0>=x1 || y0>=y1) return;
-        for (int row=y0;row<y1;++row) std::fill(pixels+(row-top)*SCREEN_WIDTH+x0,pixels+(row-top)*SCREEN_WIDTH+x1,color);
+        if (opacity==15) {
+            color=this->color(color);
+            for (int row=y0;row<y1;++row) std::fill(pixels+(row-top)*SCREEN_WIDTH+x0,pixels+(row-top)*SCREEN_WIDTH+x1,color);
+        } else for (int row=y0;row<y1;++row) for (int col=x0;col<x1;++col) pixel(col,row,color,opacity);
     }
     void ellipse(float x,float y,float rx,float ry,uint16_t color) {
         if (rx<.5f || ry<.5f) return;
@@ -84,7 +86,7 @@ public:
         while (*s) { auto *g=glyph(next(s),size); if (!g) g=glyph('?',size); if (g) w+=g->advance; }
         return w;
     }
-    void text(int x,int y,const char *s,int size,uint16_t color,int max_width=320) {
+    void text(int x,int y,const char *s,int size,uint16_t color,int max_width=320,uint8_t opacity=15) {
         const int right=x+max_width;
         while (*s) {
             auto *g=glyph(next(s),size); if (!g) g=glyph('?',size); if (!g) continue;
@@ -92,12 +94,33 @@ public:
             if (y+g->top+g->height>top && y+g->top<bottom) for (int row=0;row<g->height;++row) for (int col=0;col<g->width;++col) {
                 const unsigned i=row*g->width+col;
                 const uint8_t packed=FONT_PIXELS[g->offset+i/2];
-                pixel(x+g->left+col,y+g->top+row,color,i%2 ? packed&15 : packed>>4);
+                const uint8_t coverage=i%2 ? packed&15 : packed>>4;
+                pixel(x+g->left+col,y+g->top+row,color,(coverage*opacity+7)/15);
             }
             x+=g->advance;
         }
     }
     void center(int cx,int y,const char *s,int size,uint16_t color) { text(cx-width(s,size)/2,y,s,size,color); }
+    void zoom_text(int cx,int cy,const char *s,int size,float scale,uint16_t color,uint8_t opacity) {
+        const float origin_x=cx-width(s,size)*scale/2.f,origin_y=cy-size*scale/2.f;
+        int advance=0;
+        while (*s) {
+            auto *g=glyph(next(s),size); if (!g) g=glyph('?',size); if (!g) continue;
+            const int x=int(std::lround(origin_x+(advance+g->left)*scale));
+            const int y=int(std::lround(origin_y+g->top*scale));
+            const int w=std::max(1,int(std::lround(g->width*scale)));
+            const int h=std::max(1,int(std::lround(g->height*scale)));
+            // Render only this strip; scaling needs no temporary framebuffer.
+            const int y0=std::max({0,top-y,clip_top-y}),y1=std::min({h,bottom-y,clip_bottom-y});
+            for (int row=y0;row<y1;++row) for (int col=0;col<w;++col) {
+                const unsigned i=(row*g->height/h)*g->width+col*g->width/w;
+                const uint8_t packed=FONT_PIXELS[g->offset+i/2];
+                const uint8_t coverage=i%2 ? packed&15 : packed>>4;
+                pixel(x+col,y+row,color,(coverage*opacity+7)/15);
+            }
+            advance+=g->advance;
+        }
+    }
 private:
     uint16_t *pixels; int top,bottom;
     int left=0,right=SCREEN_WIDTH,clip_top=0,clip_bottom=SCREEN_HEIGHT;
@@ -109,6 +132,31 @@ void money(Canvas &c,int x,int y,double amount,int max_width=182,uint16_t color=
     if (Canvas::width(value,size)>max_width) size=24;
     if (Canvas::width(value,size)>max_width) size=16;
     c.text(x,y,value,size,color,max_width);
+}
+void money_gain(Canvas &c,const UiModel &m) {
+    if (m.gain_money<=0 || m.gain_progress>=1.f) return;
+    const float t=std::clamp(m.gain_progress,0.f,1.f);
+    // A quick upward hop, a short rebound, then a gentle rise while fading out.
+    float lift;
+    if (t<.28f) {
+        const float remaining=1.f-t/.28f;
+        lift=10.f*(1.f-remaining*remaining*remaining);
+    } else if (t<.48f) {
+        const float fall=(t-.28f)/.20f;
+        lift=10.f-4.f*fall*fall;
+    } else if (t<.64f) {
+        lift=6.f+2.f*std::sin((t-.48f)/.16f*3.1415927f);
+    } else lift=6.f+3.f*(t-.64f)/.36f;
+    const auto opacity=uint8_t(std::lround(15.f*std::clamp((1.f-t)/.35f,0.f,1.f)));
+    char value[32]; std::snprintf(value,sizeof(value),"+%.2f",m.gain_money);
+    int size=16;
+    if (Canvas::width(value,size)>140) size=12;
+    if (Canvas::width(value,size)>140) size=10;
+    // Above the total, beside NT$: keep clear of the title and coin scene even
+    // when the salary total or this increment needs more digits.
+    c.clip(50,51,144,29);
+    c.text(190-Canvas::width(value,size),62-int(std::lround(lift)),value,size,GREEN,140,opacity);
+    c.clip();
 }
 void duration(char *buffer,size_t capacity,uint32_t seconds) {
     std::snprintf(buffer,capacity,"%02lu:%02lu:%02lu",static_cast<unsigned long>(seconds/3600),
@@ -268,6 +316,41 @@ void progress(Canvas &c,const UiModel &m) {
         }
     }
 }
+void schedule_transition(Canvas &c,const UiModel &m) {
+    if (m.transition_progress>=1.f || m.held_ms>=500) return;
+    const char *message;
+    switch (m.transition_state) {
+        case WORK_STATE_WORKING_MORNING:message="開始上班~";break;
+        case WORK_STATE_LUNCH:message="午餐時間!!!";break;
+        case WORK_STATE_WORKING_AFTERNOON:message="繼續上班~~";break;
+        case WORK_STATE_AFTER_WORK:message="下班啦~~~~~~~";break;
+        default:return;
+    }
+    const float t=std::clamp(m.transition_progress,0.f,1.f);
+    const float enter=std::clamp(t/.16f,0.f,1.f),exit=std::clamp((t-.82f)/.18f,0.f,1.f);
+    // Back easing makes the large letters overshoot, then spring into place.
+    const float u=enter-1.f;
+    const float pop=1.f+2.70158f*u*u*u+1.70158f*u*u;
+    const float fit=std::min(1.35f,272.f/Canvas::width(message,32));
+    const float scale=fit*(.55f+.45f*pop)*(1.f-.12f*exit);
+    const auto opacity=uint8_t(std::lround(15.f*std::min(1.f,t/.035f)*(1.f-exit)));
+    const int bob=int(std::lround((1.f-enter)*13.f+std::sin(t*18.849556f)*1.5f));
+    c.clip(8,31,304,114);
+    c.rect(8,31,304,114,PANEL,opacity);
+    c.rect(8,31,304,2,GOLD,opacity);c.rect(8,143,304,2,GOLD,opacity);
+    // Small outward bursts underline the pop without flashing the whole screen.
+    const int spread=int(std::lround(enter*17.f));
+    for (int side:{-1,1}) {
+        c.rect(160+side*(94+spread)-6,47,12,2,GOLD,opacity);
+        c.rect(160+side*(112+spread),56,2,7,GREEN,opacity);
+        c.rect(160+side*(80+spread)-4,126,8,2,GOLD,opacity);
+    }
+    c.zoom_text(160,84+bob,message,32,scale,GOLD,opacity);
+    const char *caption=m.transition_state==WORK_STATE_LUNCH?"先吃飽，等等繼續偷":
+        m.transition_state==WORK_STATE_AFTER_WORK?"今天辛苦了，好好休息":"準備好了，開始偷薪水";
+    c.text(160-Canvas::width(caption,12)/2,112,caption,12,INK,280,opacity);
+    c.clip();
+}
 }
 void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
     const auto theme=display_theme_valid(static_cast<uint32_t>(m.theme))?m.theme:DisplayTheme::Classic;
@@ -294,6 +377,7 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
                 m.salary.work_state==WORK_STATE_BEFORE_WORK?"還沒開偷":"今天已偷到",16,INK);
             c.text(12,59,"NT$",12,GREEN);
             money(c,12,74-int(m.pulse*2),m.salary.earned_money,182,GREEN);
+            money_gain(c,m);
             if (m.salary.work_state==WORK_STATE_BEFORE_WORK) {
                 duration(buf,sizeof(buf),m.salary.seconds_before_work);
                 c.text(12,117,"距離上班",12,MUTED); c.text(71,117,buf,12,INK);
@@ -345,6 +429,7 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
             c.text(12,152,"Long press: 5 sec Setup / 10 sec Reset",10,GOLD);
         }
         footer(c,m);
+        schedule_transition(c,m);
     }
     if (m.held_ms>=500) {
         c.rect(40,36,240,105,PANEL);c.rect(40,36,240,2,GOLD);

@@ -9,6 +9,7 @@ constexpr const char *TAG = "config";
 constexpr uint32_t RECORD_MAGIC = 0x53544331;
 struct Record { uint32_t magic, size, crc; AppConfig config; };
 AppConfig active;
+DisplayTheme active_theme=DisplayTheme::Classic;
 SemaphoreHandle_t mutex;
 SemaphoreHandle_t maintenance;
 }
@@ -24,17 +25,22 @@ esp_err_t app_config_init(bool *configured) {
     }
     if (err != ESP_OK) return err;
     active = config_defaults();
+    active_theme = DisplayTheme::Classic;
     nvs_handle_t handle;
     err = nvs_open("salary_thief",NVS_READONLY,&handle);
     if (err == ESP_ERR_NVS_NOT_FOUND) return ESP_OK;
     if (err != ESP_OK) return err;
     Record record{}; size_t size = sizeof(record);
     err = nvs_get_blob(handle,"config",&record,&size);
+    uint32_t theme=0; size_t theme_size=sizeof(theme);
+    const auto theme_error=nvs_get_blob(handle,"theme",&theme,&theme_size);
     nvs_close(handle);
     if (err == ESP_OK && size == sizeof(record) && record.magic == RECORD_MAGIC &&
         record.size == sizeof(AppConfig) && record.crc == config_checksum(record.config) &&
         config_migrate(record.config)) {
         active=record.config; *configured=true;
+        if (theme_error==ESP_OK && theme_size==sizeof(theme) && display_theme_valid(theme))
+            active_theme=static_cast<DisplayTheme>(theme);
         ESP_LOGI(TAG,"Loaded configuration v%lu",static_cast<unsigned long>(active.version));
     } else { ESP_LOGW(TAG,"Missing, corrupt or incompatible configuration; entering setup"); }
     return ESP_OK;
@@ -43,7 +49,14 @@ AppConfig app_config_snapshot() {
     xSemaphoreTake(mutex,portMAX_DELAY); const auto c=active; xSemaphoreGive(mutex); return c;
 }
 esp_err_t app_config_save(const AppConfig &c) {
+    return app_config_save(c,app_config_theme());
+}
+DisplayTheme app_config_theme() {
+    xSemaphoreTake(mutex,portMAX_DELAY); const auto theme=active_theme; xSemaphoreGive(mutex); return theme;
+}
+esp_err_t app_config_save(const AppConfig &c,DisplayTheme theme) {
     if (!config_validate(c,true)) return ESP_ERR_INVALID_ARG;
+    if (!display_theme_valid(static_cast<uint32_t>(theme))) return ESP_ERR_INVALID_ARG;
     if (!app_config_begin_ota()) return ESP_ERR_INVALID_STATE;
     Record record{}; record.magic=RECORD_MAGIC; record.size=sizeof(AppConfig); record.config=c;
     record.crc=config_checksum(record.config);
@@ -51,6 +64,8 @@ esp_err_t app_config_save(const AppConfig &c) {
     nvs_handle_t h; esp_err_t err=nvs_open("salary_thief",NVS_READWRITE,&h);
     if (err == ESP_OK) {
         err=nvs_set_blob(h,"config",&record,sizeof(record));
+        const uint32_t saved_theme=static_cast<uint32_t>(theme);
+        if (err == ESP_OK) err=nvs_set_blob(h,"theme",&saved_theme,sizeof(saved_theme));
         if (err == ESP_OK) err=nvs_commit(h);
         nvs_close(h);
     }

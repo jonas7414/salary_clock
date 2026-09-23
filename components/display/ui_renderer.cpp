@@ -10,9 +10,32 @@ constexpr auto BG=rgb(13,23,29), PANEL=rgb(23,36,43), INK=rgb(245,241,222), MUTE
     GOLD=rgb(248,203,103), LINE=rgb(43,61,69), GREEN=rgb(133,208,176);
 class Canvas {
 public:
-    Canvas(uint16_t *p,int offset,int rows):pixels(p),top(offset),bottom(offset+rows){}
+    Canvas(uint16_t *p,int offset,int rows,DisplayTheme style):pixels(p),top(offset),bottom(offset+rows),theme(style){}
+    uint16_t color(uint16_t value) const {
+        if (theme==DisplayTheme::Classic) return value;
+        if (theme==DisplayTheme::Amber) {
+            if (value==BG) return rgb(15,11,5);
+            if (value==PANEL) return rgb(35,24,9);
+            if (value==INK) return rgb(255,219,149);
+            if (value==MUTED) return rgb(191,143,70);
+            if (value==GOLD || value==GREEN) return rgb(255,184,61);
+            if (value==LINE) return rgb(88,59,23);
+        } else {
+            if (value==BG) return rgb(202,220,159);
+            if (value==PANEL || value==LINE) return rgb(163,188,116);
+            if (value==INK || value==GOLD || value==GREEN) return rgb(38,58,32);
+            if (value==MUTED) return rgb(81,109,54);
+        }
+        // Tint the existing coin, whole burger and sleeping cat with the theme.
+        const unsigned light=(((value>>11)&31)*77/31+((value>>5)&63)*150/63+(value&31)*29/31);
+        if (theme==DisplayTheme::Amber) {
+            return light<50?rgb(35,24,9):light<120?rgb(137,86,28):light<190?rgb(226,147,45):rgb(255,219,149);
+        }
+        return light<60?rgb(38,58,32):light<130?rgb(81,109,54):light<205?rgb(163,188,116):rgb(202,220,159);
+    }
     void clip(int x=0,int y=0,int w=SCREEN_WIDTH,int h=SCREEN_HEIGHT) { left=x;right=x+w;clip_top=y;clip_bottom=y+h; }
     void rect(int x,int y,int w,int h,uint16_t color) {
+        color=this->color(color);
         const int x0=std::max(left,x), x1=std::min(right,x+w);
         const int y0=std::max(std::max(top,clip_top),y), y1=std::min(std::min(bottom,clip_bottom),y+h);
         if (x0>=x1 || y0>=y1) return;
@@ -30,6 +53,8 @@ public:
         }
     }
     void pixel(int x,int y,uint16_t color,uint8_t alpha=15) {
+        if (theme==DisplayTheme::Handheld) alpha=alpha>=8?15:0;
+        color=this->color(color);
         if (x<left || x>=right || y<std::max(top,clip_top) || y>=std::min(bottom,clip_bottom) || !alpha) return;
         auto &dst=pixels[(y-top)*SCREEN_WIDTH+x];
         if (alpha==15) { dst=color; return; }
@@ -76,6 +101,7 @@ public:
 private:
     uint16_t *pixels; int top,bottom;
     int left=0,right=SCREEN_WIDTH,clip_top=0,clip_bottom=SCREEN_HEIGHT;
+    DisplayTheme theme;
 };
 void money(Canvas &c,int x,int y,double amount,int max_width=182,uint16_t color=GOLD) {
     char value[32]; std::snprintf(value,sizeof(value),"%.2f",amount);
@@ -193,18 +219,60 @@ void rest_scene(Canvas &c,uint32_t milliseconds) {
     }
 }
 void header(Canvas &c,const UiModel &m) {
-    c.text(12,6,"薪水小偷計算器",12,MUTED);
+    if (m.theme==DisplayTheme::Amber) c.text(12,6,"> SALARY.LOG",12,GOLD);
+    else if (m.theme==DisplayTheme::Handheld) c.text(12,6,"PAYDAY / GAME",12,INK);
+    else c.text(12,6,"薪水小偷計算器",12,MUTED);
     const char *date=m.synced?m.date:"----/--/--";
     c.text(226-Canvas::width(date,12),6,date,12,MUTED);
     c.text(238,6,m.clock,12,INK);
-    c.rect(12,26,296,1,LINE);
+    c.rect(12,26,296,m.theme==DisplayTheme::Handheld?2:1,LINE);
 }
 void footer(Canvas &c,const UiModel &m) {
-    for (unsigned i=0;i<4;++i) c.ellipse(286+i*7,160,2,2,i==m.page ? GOLD : LINE);
+    for (unsigned i=0;i<4;++i) {
+        if (m.theme==DisplayTheme::Classic) c.ellipse(286+i*7,160,2,2,i==m.page ? GOLD : LINE);
+        else c.rect(283+i*7,158,5,4,i==m.page?GOLD:LINE);
+    }
+}
+void frame(Canvas &c,const UiModel &m) {
+    if (m.theme==DisplayTheme::Amber) {
+        // Open corners suggest a terminal viewport without covering any text.
+        for (const int x:{3,310}) for (const int y:{2,165}) c.rect(x,y,7,1,GOLD);
+        for (const int x:{3,316}) for (const int y:{2,159}) c.rect(x,y,1,7,GOLD);
+    } else if (m.theme==DisplayTheme::Handheld) {
+        c.rect(3,2,314,2,INK);c.rect(3,166,314,2,INK);
+        c.rect(3,2,2,166,INK);c.rect(315,2,2,166,INK);
+    }
+}
+void scene_frame(Canvas &c,const UiModel &m) {
+    if (m.theme==DisplayTheme::Classic) return;
+    if (m.theme==DisplayTheme::Amber) {
+        for (int y=37;y<140;y+=6) c.rect(203,y,110,1,PANEL);
+        c.rect(204,34,10,1,GOLD);c.rect(303,34,10,1,GOLD);
+        c.rect(204,34,1,6,GOLD);c.rect(312,34,1,6,GOLD);
+    } else {
+        c.rect(203,33,111,2,MUTED);c.rect(203,139,111,2,MUTED);
+        c.rect(203,33,2,108,MUTED);c.rect(312,33,2,108,MUTED);
+    }
+}
+void progress(Canvas &c,const UiModel &m) {
+    const double value=std::clamp(m.salary.progress,0.0,1.0);
+    if (m.theme==DisplayTheme::Classic) {
+        c.rect(12,148,252,4,LINE);c.rect(12,148,int(252*value),4,GOLD);
+    } else {
+        const int count=m.theme==DisplayTheme::Amber?28:21;
+        const int step=252/count;
+        for (int i=0;i<count;++i) {
+            c.rect(12+i*step,147,step-2,6,LINE);
+            const int filled=std::clamp(int(value*252)-i*step,0,step-2);
+            if (filled) c.rect(12+i*step,147,filled,6,GOLD);
+        }
+    }
 }
 }
 void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
-    Canvas c(pixels,offset,rows); c.rect(0,0,320,170,BG);
+    const auto theme=display_theme_valid(static_cast<uint32_t>(m.theme))?m.theme:DisplayTheme::Classic;
+    Canvas c(pixels,offset,rows,theme); c.rect(0,0,320,170,BG);
+    frame(c,m);
     header(c,m); char buf[80];
     if (m.system==SYSTEM_SETUP_MODE) {
         c.text(14,37,"SETUP MODE",24,GOLD);
@@ -231,6 +299,7 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
                 c.text(12,117,"距離上班",12,MUTED); c.text(71,117,buf,12,INK);
             } else c.text(12,118,work_label(m.salary.work_state),12,GREEN);
             c.clip(200,29,118,116);
+            scene_frame(c,m);
             if (m.salary.work_state==WORK_STATE_LUNCH) lunch_scene(c,m.animation_ms);
             else if (m.salary.work_state==WORK_STATE_AFTER_WORK) rest_scene(c,m.animation_ms);
             else {
@@ -240,7 +309,7 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
                 if (m.physics) for (const auto &v:m.physics->coins()) if(v.active) coin(c,v);
             }
             c.clip();
-            c.rect(12,148,252,4,LINE); c.rect(12,148,int(252*m.salary.progress),4,GOLD);
+            progress(c,m);
             std::snprintf(buf,sizeof(buf),"%.0f%%",m.salary.progress*100); c.text(270,142,buf,12,INK);
             c.text(12,157,m.connected?"ONLINE":"OFFLINE / CLOCK RUNNING",10,MUTED);
         } else if (m.page==1) {

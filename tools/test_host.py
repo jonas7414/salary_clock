@@ -97,6 +97,14 @@ def main():
         img=Image.open(OUT/f"scene_{i}.ppm");sheet.paste(img,(x,y+18))
         img.save(OUT/f"scene_{i}.png")
     sheet.save(OUT/"screens.png")
+    themes=Image.new("RGB",(1000,1110),"#e8ecee")
+    theme_draw=ImageDraw.Draw(themes)
+    for theme,name in enumerate(("CLASSIC / Original", "AMBER / Terminal", "HANDHELD / Retro")):
+        x=10+theme*330
+        theme_draw.text((x,10),name,fill="#182930")
+        for row,scene in enumerate((0,7,8,1,2,3)):
+            themes.paste(Image.open(OUT/f"theme_{theme}_scene_{scene}.ppm"),(x,30+row*180))
+    themes.save(OUT/"themes.png")
     Image.open(OUT/"stack_settled.ppm").resize((960,510),Image.Resampling.NEAREST).save(OUT/"stack_settled.png")
     frames=[Image.open(OUT/f"coin_{i}.ppm").resize((640,340),Image.Resampling.NEAREST) for i in range(400)]
     frames[0].save(OUT/"coin_physics.gif",save_all=True,append_images=frames[1:],duration=40,loop=0)

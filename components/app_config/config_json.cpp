@@ -23,7 +23,7 @@ bool get_time(cJSON *j,const char *key,uint16_t &minutes) {
     minutes=h*60+m; return true;
 }
 }
-bool config_parse_json(const char *body,size_t length,const AppConfig &current,AppConfig &result,const char **reason) {
+bool config_parse_json(const char *body,size_t length,const AppConfig &current,AppConfig &result,const char **reason,DisplayTheme *theme) {
     *reason="Invalid JSON object";
     if (!body || !length || length>2048 || std::memchr(body,0,length)) return false;
     // This API is a flat object. Reject nested containers before cJSON recursion can
@@ -57,10 +57,17 @@ bool config_parse_json(const char *body,size_t length,const AppConfig &current,A
         get_time(j,"work_start",c.work_start) && get_time(j,"lunch_start",c.lunch_start) &&
         get_time(j,"lunch_end",c.lunch_end) && get_time(j,"work_end",c.work_end);
     c.work_days=mask;
+    uint32_t theme_value=theme?static_cast<uint32_t>(*theme):0;
+    if (cJSON_HasObjectItem(j,"display_theme")) {
+        if (!number(j,"display_theme",theme_value,2)) {
+            cJSON_Delete(j); *reason="Invalid display theme"; return false;
+        }
+    }
     if (cJSON_HasObjectItem(j,"wifi_password")) valid=string(j,"wifi_password",c.wifi_password,sizeof(c.wifi_password)) && valid;
     else if (std::strcmp(c.wifi_ssid,current.wifi_ssid)!=0) valid=false;
     cJSON_Delete(j);
     if (!valid) { *reason="Missing or invalid settings; supply password when changing SSID"; return false; }
     if (!config_validate(c,true,reason)) return false;
-    result=c; *reason=nullptr; return true;
+    result=c; if (theme) *theme=static_cast<DisplayTheme>(theme_value);
+    *reason=nullptr; return true;
 }

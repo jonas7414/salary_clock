@@ -4,9 +4,9 @@
 
 本文件中的測試與實板項目分開記錄，不能由「有程式碼」推定實板已通過。
 
-主機共 **1,540,213 項 C++ 檢查通過**（核心 452,704、堆疊 1,087,162、NVS 29、JSON 35、OTA 283），另有 3 組 Python release guard 測試。可攜的結果見 [host-results.txt](host-results.txt) 與 [build-results.json](build-results.json)，後者包含韌體 SHA256。OTA 實板測試矩陣見 [ota.md](ota.md)。
+主機共 **1,540,708 項 C++ 檢查通過**（核心 453,133、堆疊 1,087,162、NVS 72、JSON 58、OTA 283），另有 3 組 Python release guard 測試。可攜的結果見 [host-results.txt](host-results.txt) 與 [build-results.json](build-results.json)，後者包含韌體 SHA256。OTA 實板測試矩陣見 [ota.md](ota.md)。
 
-v1.2.2 使用 Core 6.2.0、Espressif32 6.12.0、ESP-IDF 5.5.0；`core_dir = .tools/platformio` 沿用現有套件。本機雙環境建置記錄為 `.artifacts/build-ota-retry.log`。實板完整更新、斷電及回滾仍需依下列程序驗收；CI 發布狀態見 [GitHub Actions](https://github.com/jonas7414/salary_clock/actions/workflows/release.yml)。
+v1.3.0 使用 Core 6.2.0、Espressif32 6.12.0、ESP-IDF 5.5.0；`core_dir = .tools/platformio` 沿用現有套件。本機雙環境建置記錄為 `.artifacts/build-themes.log`。實板完整更新、斷電及回滾仍需依下列程序驗收；CI 發布狀態見 [GitHub Actions](https://github.com/jonas7414/salary_clock/actions/workflows/release.yml)。
 
 1.2.0 的裝置紀錄已確認 SNTP、GitHub TLS 驗證與 1.2.1 版本偵測，下載到至少 10% 後遇到兩次 errno 11，最後保留舊版。v1.2.2 新增短讀／EAGAIN 恢復、不重複資料、重試上限、總期限、取消與重新下載測試；尚未以此修正版在實板重現相同網路停頓。
 
@@ -21,17 +21,20 @@ v1.2.2 使用 Core 6.2.0、Espressif32 6.12.0、ESP-IDF 5.5.0；`core_dir = .too
 | 硬幣 16 秒動畫與落定堆疊 | `.artifacts/host/coin_physics.gif`、`stack_settled.png`；實際 C++ physics / renderer |
 | 吃飯與下班休息動畫 | `.artifacts/host/lunch.gif`、`rest.gif`；實際 C++ renderer，完整循環 120／100 幀 |
 | 16 枚硬幣接觸、支撐、休眠、喚醒及容量壓力 | `tests/test_coin_stack.cpp`；同一套物理引擎，八組隨機種子與額外指定案例 |
-| ESP-IDF 預設 build | `pio run -e tdisplay_s3`：SUCCESS；`.artifacts/build-ota-retry.log` |
-| 無 PSRAM build | `pio run -e tdisplay_s3_no_psram`：SUCCESS；`.artifacts/build-ota-retry.log` |
+| 三種風格、11 個畫面狀態 | 33 個畫面完整／分段逐像素一致、buffer guard、掌機模式最多四色；[themes.png](themes.png) |
+| 風格儲存與舊版相容 | NVS 獨立 key、原始設定 blob 不變、缺少／損毀風格回到原版、API 非法值拒絕 |
+| 手機設定頁 | 無介面 Chrome：三種風格選擇／儲存／重新載入；320、390、900 px 無水平溢出、無 JS error |
+| ESP-IDF 預設 build | `pio run -e tdisplay_s3`：SUCCESS；`.artifacts/build-themes.log` |
+| 無 PSRAM build | `pio run -e tdisplay_s3_no_psram`：SUCCESS；`.artifacts/build-themes.log` |
 
 | 組態 | 靜態 RAM | 程式 Flash 用量 | firmware.bin |
 | --- | ---: | ---: | ---: |
-| PSRAM 預設 | 38,980 bytes | 1,244,423 bytes | 1,244,832 bytes |
-| 無 PSRAM | 37,560 bytes | 1,234,491 bytes | 1,234,896 bytes |
+| PSRAM 預設 | 38,988 bytes | 1,248,171 bytes | 1,248,576 bytes |
+| 無 PSRAM | 37,568 bytes | 1,238,215 bytes | 1,238,624 bytes |
 
 上述 RAM 是 linker 的靜態用量，不含執行時 task、Wi-Fi、HTTP 與 framebuffer 配置。已檢查實際產生的 sdkconfig：兩者均為 ESP32-S3、16 MB QIO、FreeRTOS 1000 Hz；預設為 Octal PSRAM，備援組態 `SPIRAM=false`。兩者 firmware 都小於 4 MiB app partition。
 
-11 個主機畫面已做目視檢查，皆為 320×170 橫向。網頁 JavaScript 通過 Node 語法檢查；瀏覽器互動及 ESP32 HTTP／RF 整合仍待實板驗收。
+三種風格的四頁、午休與下班預覽已做目視檢查，皆為 320×170 橫向。經典原版的 10 個既有畫面與修改前 SHA-256 完全一致（系統頁因版本字串變更排除）。網頁 JavaScript 通過語法與瀏覽器互動檢查；瀏覽器測試使用本機 preview API，ESP32 HTTP／RF 整合及實際螢幕流暢度仍待實板驗收。
 
 ## 實板程序
 
@@ -39,7 +42,7 @@ v1.2.2 使用 Core 6.2.0、Espressif32 6.12.0、ESP-IDF 5.5.0；`core_dir = .too
 
 1. **無 NVS／第一次上電**：重設此產品 namespace 後，應顯示橫向 Setup、MAC 尾碼 AP 與 192.168.4.1。用手機開網頁，確認沒有外部資源要求。
 2. **Wi-Fi Scan／hidden SSID**：掃描顯示 RSSI、安全模式；點選填入。手動輸入隱藏 SSID。錯誤密碼重開機後約 20 秒回 Setup。
-3. **設定與重開機**：設定一組非預設月薪／工作日／排程；重啟後確認仍保留，午休及每日費率使用該組設定。
+3. **設定與重開機**：設定一組非預設月薪／工作日／排程；重啟後確認仍保留，午休及每日費率使用該組設定。輪流選擇三種風格並重啟，確認四頁與時段動畫套用同一風格；舊版升級預設經典，恢復原廠也回到經典。
 4. **SNTP 失敗**：阻擋 UDP 123 或上游 Internet，畫面等待且薪資不計算。恢復後應同步進入正確狀態。
 5. **斷線重連**：同步後關閉 AP，金額仍依時間增加；重新開 AP 後背景 reconnect，不重設金額、不自動開設定入口。
 6. **跨界排程**：將排程設為接近當下的短時段，觀察上班、午休開始、午休結束、下班；午休改播漢堡輕晃、下午回到原有硬幣堆疊、下班改播小貓睡覺。午休與下班不生成新幣，金額固定時動畫仍持續。

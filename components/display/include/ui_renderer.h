@@ -6,6 +6,7 @@
 constexpr int SCREEN_WIDTH=320, SCREEN_HEIGHT=170;
 struct UiModel {
     AppConfig config{};
+    DisplayTheme theme{DisplayTheme::Classic};
     SalaryStatus salary{};
     SystemState system{SYSTEM_BOOTING};
     unsigned page{};

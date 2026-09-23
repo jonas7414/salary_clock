@@ -44,6 +44,7 @@ void add_time(cJSON *j,const char *key,uint16_t minutes) {
 esp_err_t get_config(httpd_req_t *r) {
     const auto c=app_config_snapshot(); cJSON *j=cJSON_CreateObject();
     cJSON_AddNumberToObject(j,"config_version",c.version);
+    cJSON_AddNumberToObject(j,"display_theme",static_cast<unsigned>(app_config_theme()));
     cJSON_AddStringToObject(j,"wifi_ssid",c.wifi_ssid);
     cJSON_AddBoolToObject(j,"has_password",c.wifi_password[0]!=0);
     cJSON_AddNumberToObject(j,"monthly_salary",c.monthly_salary);
@@ -129,8 +130,9 @@ esp_err_t post_config(httpd_req_t *r) {
         used+=read;
     }
     AppConfig c{}; const char *reason=nullptr;
-    if (!config_parse_json(body,used,app_config_snapshot(),c,&reason)) return error(r,reason);
-    if (app_config_save(c)!=ESP_OK) return error(r,"Failed to save NVS","500 Internal Server Error");
+    auto theme=app_config_theme();
+    if (!config_parse_json(body,used,app_config_snapshot(),c,&reason,&theme)) return error(r,reason);
+    if (app_config_save(c,theme)!=ESP_OK) return error(r,"Failed to save NVS","500 Internal Server Error");
     cJSON *reply=cJSON_CreateObject(); cJSON_AddBoolToObject(reply,"saved",true); cJSON_AddBoolToObject(reply,"reboot_required",true);
     return send_json(r,reply);
 }

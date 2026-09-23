@@ -110,6 +110,7 @@ void task(void *) {
     }
     UiAnimation animation(esp_random());
     UiModel model{}; model.config=app_config_snapshot(); model.physics=&animation.physics();
+    model.theme=app_config_theme();
     std::snprintf(model.idf,sizeof(model.idf),"%s",esp_get_idf_version());
     std::snprintf(model.firmware,sizeof(model.firmware),"%s",APP_FIRMWARE_VERSION);
     TickType_t wake=xTaskGetTickCount(); int64_t last_us=esp_timer_get_time();

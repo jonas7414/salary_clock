@@ -231,9 +231,21 @@ static void render_tests(const char *directory) {
         if(scene==8){m.salary=at(m.config,18,0);std::strcpy(m.clock,"18:00:00");}
         if(scene==9){m.salary=at(m.config,12,0,0,26);std::strcpy(m.date,"2026/09/26");std::strcpy(m.clock,"12:00:00");p.rest_coin();}
         if(scene==10)m.held_ms=7000;
-        ui_render(full.data(),0,170,m);
-        for(int y=0;y<170;y+=10){ui_render(guard.data()+1,y,10,m);CHECK(guard.front()==0x55aa&&guard.back()==0x55aa);std::copy(guard.begin()+1,guard.end()-1,strip.begin()+y*320);}
-        CHECK(full==strip);ppm(std::string(directory)+"/scene_"+std::to_string(scene)+".ppm",full);
+        std::vector<uint16_t> classic;
+        for (int theme=0;theme<3;++theme) {
+            m.theme=static_cast<DisplayTheme>(theme);
+            ui_render(full.data(),0,170,m);
+            for(int y=0;y<170;y+=10){ui_render(guard.data()+1,y,10,m);CHECK(guard.front()==0x55aa&&guard.back()==0x55aa);std::copy(guard.begin()+1,guard.end()-1,strip.begin()+y*320);}
+            CHECK(full==strip);
+            if (theme==0) {classic=full;ppm(std::string(directory)+"/scene_"+std::to_string(scene)+".ppm",full);}
+            else CHECK(full!=classic);
+            ppm(std::string(directory)+"/theme_"+std::to_string(theme)+"_scene_"+std::to_string(scene)+".ppm",full);
+            if (theme==2) {
+                auto colors=full;std::sort(colors.begin(),colors.end());
+                CHECK(std::unique(colors.begin(),colors.end())-colors.begin()<=4);
+            }
+        }
+        m.theme=DisplayTheme::Classic;
     }
     m.synced=true;m.held_ms=0;m.page=0;p.reset();
     std::strcpy(m.date,"2026/09/23");

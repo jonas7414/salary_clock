@@ -33,5 +33,17 @@ int main(){
     CHECK(!parse(no_password));std::strcpy(current.wifi_ssid,"Office");std::strcpy(current.wifi_password,"old-password");
     CHECK(parse(no_password));CHECK(std::strcmp(result.wifi_password,"old-password")==0);
     CHECK(!parse(replace(no_password,"Office","Different")));
+    DisplayTheme theme=DisplayTheme::Amber;
+    auto parse_theme=[&](const std::string &s){return config_parse_json(s.data(),s.size(),current,result,&reason,&theme);};
+    CHECK(parse_theme(body));CHECK(theme==DisplayTheme::Amber); // Old clients retain the current preference.
+    for (int value=0;value<3;++value) {
+        CHECK(parse_theme(replace(body,"\"config_version\":1","\"display_theme\":"+std::to_string(value)+",\"config_version\":1")));
+        CHECK(static_cast<int>(theme)==value);
+    }
+    for (const auto value:{"3","256","-1","1.5","null","true","\"1\""}) {
+        CHECK(!parse_theme(replace(body,"\"config_version\":1",std::string("\"display_theme\":")+value+",\"config_version\":1")));
+        CHECK(theme==DisplayTheme::Handheld);
+    }
+    CHECK(!parse_theme(replace(body,"\"config_version\":1","\"display_theme\":1,\"display_theme\":2,\"config_version\":1")));
     std::printf("PASS: %u JSON/API settings checks (types, ranges, schedules, duplicates, version, credentials, oversized bodies)\n",checks);
 }

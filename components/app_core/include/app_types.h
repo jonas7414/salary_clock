@@ -3,6 +3,9 @@
 #include <ctime>
 
 constexpr uint32_t CONFIG_VERSION = 1;
+// Stored separately from AppConfig so older firmware can still read its NVS blob.
+enum class DisplayTheme : uint8_t { Classic=0, Amber=1, Handheld=2 };
+constexpr bool display_theme_valid(uint32_t value) { return value<=2; }
 enum SystemState { SYSTEM_BOOTING, SYSTEM_SETUP_MODE, SYSTEM_CONNECTING_WIFI,
                    SYSTEM_SYNCING_TIME, SYSTEM_RUNNING, SYSTEM_ERROR };
 enum WorkState { WORK_STATE_NO_TIME, WORK_STATE_DAY_OFF, WORK_STATE_BEFORE_WORK,

@@ -4,9 +4,11 @@
 
 本文件中的測試與實板項目分開記錄，不能由「有程式碼」推定實板已通過。
 
-主機共 **1,540,172 項 C++ 檢查通過**（核心 452,704、堆疊 1,087,162、NVS 29、JSON 35、OTA 242），另有 3 組 Python release guard 測試。可攜的結果見 [host-results.txt](host-results.txt) 與 [build-results.json](build-results.json)，後者包含韌體 SHA256。OTA 實板測試矩陣見 [ota.md](ota.md)。
+主機共 **1,540,213 項 C++ 檢查通過**（核心 452,704、堆疊 1,087,162、NVS 29、JSON 35、OTA 283），另有 3 組 Python release guard 測試。可攜的結果見 [host-results.txt](host-results.txt) 與 [build-results.json](build-results.json)，後者包含韌體 SHA256。OTA 實板測試矩陣見 [ota.md](ota.md)。
 
-v1.2.1 使用 Core 6.2.0、Espressif32 6.12.0、ESP-IDF 5.5.0；`core_dir = .tools/platformio` 沿用現有套件。本機雙環境建置記錄為 `.artifacts/build-release-1.2.1.log`。實板 upload、斷電及回滾仍需依下列程序驗收；CI 發布狀態見 [GitHub Actions](https://github.com/jonas7414/salary_clock/actions/workflows/release.yml)。
+v1.2.2 使用 Core 6.2.0、Espressif32 6.12.0、ESP-IDF 5.5.0；`core_dir = .tools/platformio` 沿用現有套件。本機雙環境建置記錄為 `.artifacts/build-ota-retry.log`。實板完整更新、斷電及回滾仍需依下列程序驗收；CI 發布狀態見 [GitHub Actions](https://github.com/jonas7414/salary_clock/actions/workflows/release.yml)。
+
+1.2.0 的裝置紀錄已確認 SNTP、GitHub TLS 驗證與 1.2.1 版本偵測，下載到至少 10% 後遇到兩次 errno 11，最後保留舊版。v1.2.2 新增短讀／EAGAIN 恢復、不重複資料、重試上限、總期限、取消與重新下載測試；尚未以此修正版在實板重現相同網路停頓。
 
 | 項目 | 證據來源 |
 | --- | --- |
@@ -19,13 +21,13 @@ v1.2.1 使用 Core 6.2.0、Espressif32 6.12.0、ESP-IDF 5.5.0；`core_dir = .too
 | 硬幣 16 秒動畫與落定堆疊 | `.artifacts/host/coin_physics.gif`、`stack_settled.png`；實際 C++ physics / renderer |
 | 吃飯與下班休息動畫 | `.artifacts/host/lunch.gif`、`rest.gif`；實際 C++ renderer，完整循環 120／100 幀 |
 | 16 枚硬幣接觸、支撐、休眠、喚醒及容量壓力 | `tests/test_coin_stack.cpp`；同一套物理引擎，八組隨機種子與額外指定案例 |
-| ESP-IDF 預設 build | `pio run -e tdisplay_s3`：SUCCESS；`.artifacts/build-release-1.2.1.log` |
-| 無 PSRAM build | `pio run -e tdisplay_s3_no_psram`：SUCCESS；`.artifacts/build-release-1.2.1.log` |
+| ESP-IDF 預設 build | `pio run -e tdisplay_s3`：SUCCESS；`.artifacts/build-ota-retry.log` |
+| 無 PSRAM build | `pio run -e tdisplay_s3_no_psram`：SUCCESS；`.artifacts/build-ota-retry.log` |
 
 | 組態 | 靜態 RAM | 程式 Flash 用量 | firmware.bin |
 | --- | ---: | ---: | ---: |
-| PSRAM 預設 | 38,980 bytes | 1,242,467 bytes | 1,242,864 bytes |
-| 無 PSRAM | 37,560 bytes | 1,232,431 bytes | 1,232,832 bytes |
+| PSRAM 預設 | 38,980 bytes | 1,244,423 bytes | 1,244,832 bytes |
+| 無 PSRAM | 37,560 bytes | 1,234,491 bytes | 1,234,896 bytes |
 
 上述 RAM 是 linker 的靜態用量，不含執行時 task、Wi-Fi、HTTP 與 framebuffer 配置。已檢查實際產生的 sdkconfig：兩者均為 ESP32-S3、16 MB QIO、FreeRTOS 1000 Hz；預設為 Octal PSRAM，備援組態 `SPIRAM=false`。兩者 firmware 都小於 4 MiB app partition。
 

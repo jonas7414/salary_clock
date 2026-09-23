@@ -1,6 +1,6 @@
 {
   "date": "2026-09-23",
-  "firmware_version": "1.2.1",
+  "firmware_version": "1.2.2",
   "platformio_versions_verified": [
     "6.2.0"
   ],
@@ -8,22 +8,22 @@
   "esp_idf": "5.5.0",
   "display": "320x170 landscape, USB left",
   "hardware_tested": false,
-  "host_checks_passed": 1540172,
+  "host_checks_passed": 1540213,
   "builds": {
     "tdisplay_s3": {
       "status": "SUCCESS",
       "platformio": "6.2.0",
       "psram_enabled": true,
-      "static_ram_bytes": 38996,
-      "flash_usage_bytes": 1242467,
+      "static_ram_bytes": 38980,
+      "flash_usage_bytes": 1244423,
       "artifacts": {
         "firmware.bin": {
-          "bytes": 1242864,
-          "sha256": "729d1b1796a0bd7bfbd4e34df07cb4bab8a3424b893170cff4cf6848056479eb"
+          "bytes": 1244832,
+          "sha256": "ae200448359eddfea4340f1e8dfb85a39c63a7c9cb33ada3572dc11c798cb8d5"
         },
         "bootloader.bin": {
           "bytes": 22736,
-          "sha256": "564541925e6366c30dd9c35d613151f62ce61d6f6bb3d0fa5f3f8fc17e7ab9f6"
+          "sha256": "6cb7b5ae7d124b6fffe1c4ea143e9160ca1745ab01243cfe81c3bc64e47d9036"
         },
         "partitions.bin": {
           "bytes": 3072,
@@ -35,7 +35,7 @@
         }
       },
       "ota_partition_bytes": 4194304,
-      "remaining_ota_bytes": 2951440,
+      "remaining_ota_bytes": 2949472,
       "rollback_enabled": true,
       "tls_certificate_bundle_enabled": true
     },
@@ -43,16 +43,16 @@
       "status": "SUCCESS",
       "platformio": "6.2.0",
       "psram_enabled": false,
-      "static_ram_bytes": 37552,
-      "flash_usage_bytes": 1232431,
+      "static_ram_bytes": 37560,
+      "flash_usage_bytes": 1234491,
       "artifacts": {
         "firmware.bin": {
-          "bytes": 1232832,
-          "sha256": "6449937117b9df772141db167b26e9dcae7ec3cd20d9c29462035b70363983dd"
+          "bytes": 1234896,
+          "sha256": "47c872989ac2b904189745202f5e1cfe55f9165d0b3df94abb087c6425794e37"
         },
         "bootloader.bin": {
           "bytes": 22736,
-          "sha256": "62a6c1dc4e8728859b48ed2656a9c222219d53399e3a24bff5b1102d1dc67a83"
+          "sha256": "2b8d27d2316227acf46d0b782b2cba45ef60e5597a64a1e01c0fdfa74561b394"
         },
         "partitions.bin": {
           "bytes": 3072,
@@ -64,14 +64,20 @@
         }
       },
       "ota_partition_bytes": 4194304,
-      "remaining_ota_bytes": 2961472,
+      "remaining_ota_bytes": 2959408,
       "rollback_enabled": true,
       "tls_certificate_bundle_enabled": true
     }
   },
-  "build_log": ".artifacts/build-release-1.2.1.log",
+  "build_log": ".artifacts/build-ota-retry.log",
   "release_guard_test_groups": 3,
   "ota_hardware_tested": false,
   "ota_policy": "Check once on every boot after Wi-Fi and time sync, then wait 20s; manual requests supported",
-  "report_scope": "Local build; published assets are rebuilt and tested in GitHub Actions"
+  "report_scope": "Local build; published assets are rebuilt and tested in GitHub Actions",
+  "network_retry_policy": {
+    "firmware_socket_timeout_ms": 30000,
+    "extra_read_attempts": 2,
+    "download_attempts": 3,
+    "total_download_deadline_seconds": 600
+  }
 }

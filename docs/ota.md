@@ -1,4 +1,4 @@
-# GitHub Releases OTA（v1.2.1）
+# GitHub Releases OTA（v1.2.2）
 
 ## 實際行為
 
@@ -68,11 +68,12 @@ flowchart TD
 
 | 檔案／模組 | 責任 |
 | --- | --- |
-| `version.txt` | 唯一正式韌體版本來源，現為 1.2.1 |
+| `version.txt` | 唯一正式韌體版本來源，現為 1.2.2 |
 | 根 `CMakeLists.txt`、`tools/configure_build.py` | 注入 ESP app descriptor 與 `APP_FIRMWARE_VERSION`，驗證 board／分區，確保既有 sdkconfig 啟用 OTA 必要項 |
 | `components/ota_manager/include/ota_config.h` | Repository、組態資產名、開機延遲、健康期、timeout、緩衝區限制 |
 | `ota_policy.cpp/.h` | SemVer、Release JSON、SHA 檔案格式及 HTTPS host 白名單；可直接做主機測試 |
 | `ota_transfer.h` | 共用串流驗證順序；只有完整下載、digest 與 image 驗證通過才呼叫 activation |
+| `ota_retry.h` | 暫時讀取逾時與重新下載的有限次重試，保留整體期限與取消條件 |
 | `ota_manager.cpp/.h` | FreeRTOS worker、HTTPS、redirect、狀態、callback、官方 OTA API、開機驗證 |
 | `components/app_core/include/task_health.h` | 任務 heartbeat 與連續穩定期間政策 |
 | `app_system` 與五個現有 task | 同步 health 狀態，OTA priority 1，低於現有關鍵 task |
@@ -131,7 +132,13 @@ OTA 不依賴 display／Web／CLI。現有產品沒有新增未完成的按鈕�
 
 下載期間 app_config maintenance mutex 阻止 save/reset，snapshot 讀取保持可用；`OTA_ACTIVE_BIT` 阻止新的 setup/reboot/reset 命令。已排入的命令遇到 reset 鎖衝突會記錄錯誤，不會用 assertion 造成意外重啟。任意實體斷電仍按 A/B 原理保留正在執行的 app。
 
-錯誤包含斷線、DNS／TLS／HTTP 403/404/429/500、缺 Release／資產、JSON／版本異常、長度／SHA／映像不符、容量不足、Flash 操作失敗；進入 ERROR、abort 未完成 handle、清理 client／heap／mutex，保留目前 app。網路錯誤不設 SYSTEM_ERROR、不主動 reboot。Socket timeout 10 秒，metadata 作業期限 60 秒、下載期限 10 分鐘，於每段 I/O 檢查。沒有 tight retry loop。
+錯誤包含斷線、DNS／TLS／HTTP 403/404/429/500、缺 Release／資產、JSON／版本異常、長度／SHA／映像不符、容量不足、Flash 操作失敗；最終失敗時進入 ERROR、abort 未完成 handle、清理 client／heap／mutex，保留目前 app。網路錯誤不設 SYSTEM_ERROR、不主動 reboot。
+
+Metadata socket timeout 為 10 秒，韌體下載為 30 秒。遇到 `-ESP_ERR_HTTP_EAGAIN` 或對應的暫時無資料 errno，同一連線最多額外讀取 2 次，間隔 250／500 ms；已收到的短讀資料立即交給寫入流程，不重複寫入或計算 SHA。
+
+若連線仍失敗，會清理本次 OTA handle、TLS client 與 SHA 狀態，再從 byte zero 重新下載，最多 3 次完整嘗試，間隔 1／2 秒。Metadata 作業期限 60 秒；所有韌體下載嘗試共用 10 分鐘期限，於每段 I/O 檢查。Wi-Fi 中斷、設定模式或期限到達會停止；SHA、image、容量及 Flash 寫入錯誤不自動重新下載。這些是同一次開機檢查內的重試，不會另外定時輪詢 GitHub。
+
+`No more processes` 是此工具鏈對 errno 11（EAGAIN）的文字；在此 HTTP 讀取路徑代表暫時沒有資料，不表示 FreeRTOS task 數量不足。ESP-IDF 的回傳行為見 [HTTP client 讀取 API](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32s3/api-reference/protocols/esp_http_client.html)。
 
 Worker stack 12 KiB，metadata／TLS／4 KiB buffer 在 heap；檢查前後記錄 free heap、minimum heap 與 stack watermark。實際最低剩餘記憶體及 LCD FPS 仍需雙組態實測。
 
@@ -155,22 +162,22 @@ Worker stack 12 KiB，metadata／TLS／4 KiB buffer 在 heap；檢查前後記�
 git add .
 git commit -m "Add boot-time GitHub OTA with rollback"
 git push origin main
-git tag v1.2.1
-git push origin v1.2.1
+git tag v1.2.2
+git push origin v1.2.2
 ```
 
-測試 v1.2.1 OTA 時，裝置應先安裝支援 OTA 的 1.2.0，再重新開機檢查。若已透過 USB 安裝 1.2.1，看到相同版本會跳過更新；下一次測試需發布更高版本，例如 1.2.2。沒有 OTA 的舊版必須先完成 USB 安裝，不能直接接收 Release 更新。
+已安裝支援 OTA 的 1.2.0／1.2.1 可重新開機檢查 v1.2.2。下載期間執行的是裝置目前的下載器，所以新 Release 的重試修正不會提前生效；若舊下載器反覆逾時，需先透過 USB 安裝修正版。若已安裝 1.2.2，看到相同版本會跳過更新；下一次 OTA 測試需發布更高版本。沒有 OTA 的舊版必須先完成 USB 安裝。
 
 Release 必須有 `firmware.bin`、`firmware.sha256`、`firmware-no-psram.bin`、`firmware-no-psram.sha256`。只發布 app binary，bootloader／partition table 不透過此 OTA 改寫。Release notes 不宜過長，以免完整 API JSON 超過 32 KiB。
 
 ## 驗證結果與實板測試計畫
 
-本機雙組態 `pio run` 已成功；C++ host tests 共 1,540,172 檢查（包含 OTA 242 項、NVS 29 項），另有 3 組 Python release guard 測試。Tag 必須與 `version.txt` 一致，不相符的版本會被拒絕。數值與本機產物 SHA 見 [build-results.json](build-results.json)；公開產物以 Release 附帶的 SHA 為準。CI 結果見 [GitHub Actions](https://github.com/jonas7414/salary_clock/actions/workflows/release.yml)。裝置端 TLS、斷電與回滾仍需實板確認。
+本機雙組態 `pio run` 已成功；C++ host tests 共 1,540,213 檢查（包含 OTA 283 項、NVS 29 項），另有 3 組 Python release guard 測試。Tag 必須與 `version.txt` 一致，不相符的版本會被拒絕。數值與本機產物 SHA 見 [build-results.json](build-results.json)；公開產物以 Release 附帶的 SHA 為準。CI 結果見 [GitHub Actions](https://github.com/jonas7414/salary_clock/actions/workflows/release.yml)。1.2.0 實板紀錄已確認 TLS、版本偵測及部分下載；重試修正、完整更新、斷電與回滾仍需實板驗收。
 
 | 組態 | firmware.bin | OTA slot | 剩餘空間 |
 | --- | ---: | ---: | ---: |
-| PSRAM | 1,242,864 bytes | 4,194,304 bytes | 2,951,440 bytes |
-| 無 PSRAM | 1,232,832 bytes | 4,194,304 bytes | 2,961,472 bytes |
+| PSRAM | 1,244,832 bytes | 4,194,304 bytes | 2,949,472 bytes |
+| 無 PSRAM | 1,234,896 bytes | 4,194,304 bytes | 2,959,408 bytes |
 
 主機測試直接使用 production SemVer、cJSON parser、checksum／URL policy、probation 與串流順序。故障注入涵蓋每個讀取邊界中斷、短讀、過長、write／digest／image／activation 失敗，檢查前序失敗時 activation 未呼叫；這不替代實際 Flash／bootloader 的斷電保證。
 
@@ -186,6 +193,8 @@ Release 必須有 `firmware.bin`、`firmware.sha256`、`firmware-no-psram.bin`�
 | 損毀映像 | 在測試 Release 改動 binary 的一 byte，保留原 SHA；拒絕更新，boot partition 不變；另外改 SHA 配合但破壞映像內容，應由 ESP image validation 擋下 |
 | 故障新版 | 在測試新版 probation 前故意 abort，或停止 LCD heartbeat；應 reset／90 秒內回滾，舊版看到相同故障版本不反覆下載 |
 | OTA 中 Wi-Fi 斷線 | 下載中關 AP，應 ERROR／abort；舊版繼續執行，網路不可用時沿用原 Wi-Fi fallback policy |
+| 短暫讀取逾時 | 模擬短讀後連續兩次 EAGAIN，恢復後應接續同一串流，已寫入 bytes 與 SHA 不重複；超出次數才重新建立下載 |
+| 重試耗盡 | 持續無資料應在額外 2 次讀取、最多 3 次完整嘗試或總期限到達後停止，保持舊 boot partition；不得無限重試 |
 | GitHub／DNS／TLS 失敗 | 用路由器 DNS／防火牆阻擋 GitHub、封鎖 SNTP，分別確認 ERROR 或等待有效時間，無更新造成的 reboot |
 | HTTP 錯誤 | 測試來源不存在（404）、受限（403/429）、服務錯誤（500）時只記錄與保留 app；不能以停用 TLS 的代理測試取代驗證 |
 | 版本／JSON／資產 | 測試 tag 非法、檔名錯、無 SHA、兩個 SHA 不同、過大 asset、不同專案映像，均拒絕且不切 slot |

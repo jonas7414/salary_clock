@@ -1,5 +1,6 @@
 ﻿#include "ota_policy.h"
 #include "ota_transfer.h"
+#include "ota_retry.h"
 #include "task_health.h"
 #include <cstdio>
 #include <cstdlib>
@@ -17,6 +18,69 @@ static std::string asset(const std::string &name="firmware.bin",const std::strin
 static std::string release(const std::string &assets) { return "{\"assets\":["+assets+"],\"prerelease\":false,\"tag_name\":\"v1.2.0\",\"draft\":false}"; }
 static bool parse(const std::string &s) { ota::Release out{}; const char *reason=nullptr; return ota::parse_release(s.data(),s.size(),"test/repo","firmware.bin",out,&reason); }
 static std::string replace(std::string s,const std::string &a,const std::string &b) { auto p=s.find(a); CHECK(p!=std::string::npos); s.replace(p,a.size(),b); return s; }
+static void retry_tests() {
+    // IDF may return a short positive read on the first timeout, then -0x7007
+    // when the next call times out without bytes. Neither may replay data.
+    const std::vector<ota::ReadAttempt> trace={{7,false,true},{-0x7007,false,true},
+        {-0x7007,false,true},{9,false,false},{0,true,false}};
+    size_t cursor=0; unsigned pauses=0; std::vector<int> delivered;
+    for (;;) {
+        const int count=ota::read_with_retry([&]() { CHECK(cursor<trace.size());return trace[cursor++]; },
+            [](){return true;},[&](unsigned retry){CHECK(retry==++pauses);},2);
+        CHECK(count>=0); if (!count) break; delivered.push_back(count);
+    }
+    CHECK(delivered==std::vector<int>({7,9}));CHECK(cursor==trace.size());CHECK(pauses==2);
+    unsigned reads=0;pauses=0;
+    CHECK(ota::read_with_retry([&](){++reads;return ota::ReadAttempt{-0x7007,false,true};},
+        [](){return true;},[&](unsigned){++pauses;},2)==-1);
+    CHECK(reads==3 && pauses==2);
+    // The errno-based zero-byte timeout variant is also recoverable.
+    reads=0;
+    CHECK(ota::read_with_retry([&](){return ++reads==1?ota::ReadAttempt{0,false,true}:ota::ReadAttempt{4,false,false};},
+        [](){return true;},[](unsigned){},2)==4);CHECK(reads==2);
+    for (const auto failure:{ota::ReadAttempt{0,false,false},ota::ReadAttempt{-1,false,false}}) {
+        reads=0;pauses=0;
+        CHECK(ota::read_with_retry([&](){++reads;return failure;},[](){return true;},
+            [&](unsigned){++pauses;},2)==-1);CHECK(reads==1 && pauses==0);
+    }
+    reads=0;
+    CHECK(ota::read_with_retry([&](){++reads;return ota::ReadAttempt{4,false,false};},
+        [](){return false;},[](unsigned){},2)==-1);CHECK(reads==0);
+    bool online=true;pauses=0;
+    CHECK(ota::read_with_retry([&](){online=false;return ota::ReadAttempt{4,false,false};},
+        [&](){return online;},[&](unsigned){++pauses;},2)==-1);CHECK(pauses==0);
+    int elapsed=0;reads=0;
+    CHECK(ota::read_with_retry([&](){++reads;elapsed+=30;return ota::ReadAttempt{-0x7007,false,true};},
+        [&](){return elapsed<60;},[](unsigned){},10)==-1);CHECK(reads==2);
+    using D=ota::DownloadAttempt;
+    unsigned attempts=0;pauses=0;
+    CHECK(ota::download_with_retry([&](){return ++attempts<3?D::Retryable:D::Success;},
+        [](){return true;},[&](unsigned retry){CHECK(retry==++pauses);},3));
+    CHECK(attempts==3 && pauses==2);
+    attempts=0;pauses=0;
+    CHECK(!ota::download_with_retry([&](){++attempts;return D::Retryable;},
+        [](){return true;},[&](unsigned){++pauses;},3));CHECK(attempts==3 && pauses==2);
+    attempts=0;
+    CHECK(!ota::download_with_retry([&](){++attempts;return D::Failed;},
+        [](){return true;},[](unsigned){CHECK(false);},3));CHECK(attempts==1);
+    online=true;attempts=0;
+    CHECK(!ota::download_with_retry([&](){++attempts;return D::Retryable;},
+        [&](){return online;},[&](unsigned){online=false;},3));CHECK(attempts==1);
+    // Every restarted transfer starts with fresh bytes/hash state. Only the
+    // successful attempt reaches verification and activation.
+    attempts=0;unsigned activations=0;std::vector<unsigned> written;
+    CHECK(ota::download_with_retry([&](){
+        ++attempts;uint8_t data[8]{};unsigned bytes=0;int chunks=0;
+        const auto result=ota::transfer_image(data,8,4,12,
+            [&](uint8_t *,size_t){return ++chunks==1?(attempts==1?-1:8):0;},
+            [&](const uint8_t *,size_t count){bytes+=count;return true;},
+            [&](){CHECK(bytes==12);return true;},[](){return true;},
+            [&](){++activations;return true;},[](uint32_t,uint32_t){});
+        written.push_back(bytes);
+        return result==ota::TransferResult::Success?D::Success:D::Retryable;
+    },[](){return true;},[](unsigned){},3));
+    CHECK(attempts==2 && activations==1);CHECK(written==std::vector<unsigned>({4,12}));
+}
 static void transfer_tests() {
     using R=ota::TransferResult;
     // Inject failures into the production transfer ordering, not a second model.
@@ -78,6 +142,6 @@ int main() {
     CHECK(unstable.update(159,true,false)==BootDecision::Waiting);CHECK(unstable.update(160,true,false)==BootDecision::Valid);
     BootProbation failed(100,30,90);CHECK(failed.update(190,false,false)==BootDecision::Rollback);
     CHECK(failed.update(101,true,true)==BootDecision::Rollback);CHECK(failed.update(99,true,false)==BootDecision::Rollback);
-    transfer_tests();
-    std::printf("PASS: %u OTA checks (SemVer, Release JSON, TLS URL policy, checksums, boot health, transfer fault injection)\n",checks);
+    transfer_tests();retry_tests();
+    std::printf("PASS: %u OTA checks (SemVer, Release JSON, TLS URL policy, checksums, boot health, transfer faults, bounded network retries)\n",checks);
 }

@@ -2,6 +2,7 @@
 #include "ota_config.h"
 #include "ota_policy.h"
 #include "ota_transfer.h"
+#include "ota_retry.h"
 #include "app_config.h"
 #include "app_system.h"
 #include "esp_app_desc.h"
@@ -17,6 +18,7 @@
 #include "freertos/task.h"
 #include "mbedtls/sha256.h"
 #include <algorithm>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -63,6 +65,8 @@ public:
     int64_t deadline{},length{-1};
     char location[ota_config::MAX_REDIRECT_URL]{};
     bool bad_header{};
+    bool retryable_failure{};
+    uint32_t received{};
     ~HttpStream() { close(); }
     void close() { if (client) { esp_http_client_cleanup(client); client=nullptr; } }
     static esp_err_t event(esp_http_client_event_t *e) {
@@ -76,8 +80,10 @@ public:
         }
         return ESP_OK;
     }
-    bool open(const char *initial,int64_t timeout) {
-        deadline=esp_timer_get_time()+timeout;
+    bool open(const char *initial,int64_t timeout,int socket_timeout=ota_config::HTTP_TIMEOUT_MS,
+              int64_t operation_deadline=INT64_MAX) {
+        deadline=std::min(esp_timer_get_time()+timeout,operation_deadline);
+        retryable_failure=false; received=0;
         // Heap storage avoids large redirect URLs on the worker stack.
         std::unique_ptr<char[]> url(new(std::nothrow) char[ota_config::MAX_REDIRECT_URL]);
         if (!url || strlen(initial)>=ota_config::MAX_REDIRECT_URL) return false;
@@ -87,7 +93,7 @@ public:
             location[0]=0; bad_header=false;
             esp_http_client_config_t config{};
             config.url=url.get(); config.user_agent="SalaryClock/" APP_FIRMWARE_VERSION;
-            config.timeout_ms=ota_config::HTTP_TIMEOUT_MS; config.disable_auto_redirect=true;
+            config.timeout_ms=socket_timeout; config.disable_auto_redirect=true;
             config.transport_type=HTTP_TRANSPORT_OVER_SSL; config.crt_bundle_attach=esp_crt_bundle_attach;
             config.buffer_size=4096; config.buffer_size_tx=4096;
             config.event_handler=event; config.user_data=this;
@@ -96,11 +102,17 @@ public:
             esp_http_client_set_header(client,"Accept","application/vnd.github+json, application/octet-stream");
             esp_http_client_set_header(client,"Accept-Encoding","identity");
             esp_http_client_set_header(client,"X-GitHub-Api-Version","2022-11-28");
-            if (esp_http_client_open(client,0)!=ESP_OK) return false;
+            const auto opened=esp_http_client_open(client,0);
+            if (opened!=ESP_OK) {
+                retryable_failure=opened==ESP_ERR_HTTP_CONNECT || opened==ESP_ERR_HTTP_WRITE_DATA;
+                ESP_LOGW(TAG,"HTTPS open failed: %s",esp_err_to_name(opened));
+                return false;
+            }
             length=esp_http_client_fetch_headers(client);
             const int code=esp_http_client_get_status_code(client);
             xSemaphoreTake(status_mutex,portMAX_DELAY); status.http_status=code; xSemaphoreGive(status_mutex);
-            if (length<0 || bad_header) return false;
+            if (length<0) { retryable_failure=true; return false; }
+            if (bad_header) return false;
             if (esp_http_client_is_chunked_response(client)) length=-1;
             if (code==200) return true;
             if (code!=301 && code!=302 && code!=303 && code!=307 && code!=308) {
@@ -113,10 +125,29 @@ public:
         return false;
     }
     int read(void *buffer,size_t size) {
-        if (!ready() || esp_timer_get_time()>=deadline) return -1;
-        const int count=esp_http_client_read(client,static_cast<char*>(buffer),size);
-        if (!ready() || esp_timer_get_time()>=deadline) return -1;
-        if (count==0 && !esp_http_client_is_complete_data_received(client)) return -1;
+        const auto allowed=[&]() { return ready() && esp_timer_get_time()<deadline; };
+        retryable_failure=false;
+        const int count=ota::read_with_retry([&]() {
+            // Capture errno immediately: other IDF calls or logging may change it.
+            errno=0;
+            const int n=esp_http_client_read(client,static_cast<char*>(buffer),size);
+            const int socket_error=errno;
+            const bool complete=esp_http_client_is_complete_data_received(client);
+            const bool transient=n==-ESP_ERR_HTTP_EAGAIN ||
+                (n<=0 && (socket_error==EAGAIN || socket_error==EWOULDBLOCK || socket_error==ETIMEDOUT));
+            retryable_failure=n<=0 && !complete;
+            if (n<=0 && !complete) ESP_LOGW(TAG,"Read paused at %lu bytes: result=%d errno=%d transient=%d",
+                (unsigned long)received,n,socket_error,transient);
+            return ota::ReadAttempt{n,complete,transient};
+        },allowed,[&](unsigned attempt) {
+            ESP_LOGW(TAG,"Waiting for HTTPS data; retry %u/%u",attempt,ota_config::READ_TIMEOUT_RETRIES);
+            vTaskDelay(pdMS_TO_TICKS(ota_config::READ_RETRY_DELAY_MS*attempt));
+        },ota_config::READ_TIMEOUT_RETRIES);
+        if (count>0) received+=count;
+        if (!allowed()) {
+            retryable_failure=false;
+            ESP_LOGW(TAG,"Read cancelled: network unavailable or operation deadline reached");
+        }
         return count;
     }
 };
@@ -148,7 +179,8 @@ struct ImageWriter {
     ~ImageWriter() { if (handle) esp_ota_abort(handle); mbedtls_sha256_free(&sha); }
     bool finish() { const auto h=handle; handle=0; return esp_ota_end(h)==ESP_OK; }
 };
-bool install(const ota::Release &release,const char *&reason) {
+bool install_attempt(const ota::Release &release,const char *&reason,bool &retryable,int64_t deadline) {
+    retryable=false;
     reason="Configuration is being saved";
     Maintenance maintenance;
     if (!maintenance.held) return false;
@@ -170,13 +202,16 @@ bool install(const ota::Release &release,const char *&reason) {
     publish(OtaState::DOWNLOADING,"Downloading inactive partition",ESP_OK,OtaEvent::START,true);
     progress(0,release.size);
     reason="Firmware HTTPS connection or length failed";
-    if (!stream->open(release.firmware_url,ota_config::DOWNLOAD_DEADLINE_US) ||
-        (stream->length>=0 && stream->length!=release.size)) return false;
+    if (!stream->open(release.firmware_url,ota_config::DOWNLOAD_DEADLINE_US,
+                      ota_config::FIRMWARE_HTTP_TIMEOUT_MS,deadline)) {
+        retryable=stream->retryable_failure; return false;
+    }
+    if (stream->length>=0 && stream->length!=release.size) return false;
     constexpr size_t prefix_size=sizeof(esp_image_header_t)+sizeof(esp_image_segment_header_t)+sizeof(esp_app_desc_t);
     size_t prefix=0;
     while (prefix<prefix_size) {
         const int n=stream->read(buffer.get()+prefix,prefix_size-prefix);
-        if (n<=0) return false;
+        if (n<=0) { retryable=stream->retryable_failure; return false; }
         prefix+=n;
     }
     esp_image_header_t header{}; esp_app_desc_t description{};
@@ -217,7 +252,10 @@ bool install(const ota::Release &release,const char *&reason) {
         [&](uint32_t received,uint32_t total) { progress(received,total); vTaskDelay(1); });
     switch(result) {
         case ota::TransferResult::Success:return true;
-        case ota::TransferResult::Incomplete:reason="Firmware download interrupted or incomplete";break;
+        case ota::TransferResult::Incomplete:
+            reason="Firmware download interrupted or incomplete";
+            retryable=stream && stream->retryable_failure;
+            break;
         case ota::TransferResult::Oversize:reason="Firmware exceeds declared size";break;
         case ota::TransferResult::WriteFailed:reason="Flash write or hash operation failed";break;
         case ota::TransferResult::DigestFailed:reason="Firmware SHA-256 mismatch";break;
@@ -225,6 +263,23 @@ bool install(const ota::Release &release,const char *&reason) {
         case ota::TransferResult::ActivateFailed:reason="Boot partition switch failed";break;
     }
     return false;
+}
+bool install(const ota::Release &release,const char *&reason) {
+    const int64_t deadline=esp_timer_get_time()+ota_config::DOWNLOAD_DEADLINE_US;
+    unsigned attempt=0;
+    return ota::download_with_retry([&]() {
+        ESP_LOGI(TAG,"Firmware download attempt %u/%u",++attempt,ota_config::DOWNLOAD_ATTEMPTS);
+        bool retryable=false;
+        if (install_attempt(release,reason,retryable,deadline)) return ota::DownloadAttempt::Success;
+        return retryable ? ota::DownloadAttempt::Retryable : ota::DownloadAttempt::Failed;
+    },[&]() {
+        const bool available=ready() && esp_timer_get_time()<deadline;
+        if (!available) reason="Network unavailable or firmware download deadline reached";
+        return available;
+    },[&](unsigned retry) {
+        ESP_LOGW(TAG,"%s; restarting download from byte zero",reason);
+        vTaskDelay(pdMS_TO_TICKS(ota_config::DOWNLOAD_RETRY_DELAY_MS*retry));
+    },ota_config::DOWNLOAD_ATTEMPTS);
 }
 void check(bool auto_install) {
     xSemaphoreTake(status_mutex,portMAX_DELAY);

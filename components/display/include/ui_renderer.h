@@ -22,6 +22,7 @@ struct UiModel {
     uint32_t animation_ms{};
     bool synced{}, sntp_synced{}, connected{}, associated{}, sntp_wait_expired{}, partial{};
     float rtc_progress{1.f};
+    float boot_progress{1.f};
     float pulse{};
     double gain_money{};
     float gain_progress{1.f};

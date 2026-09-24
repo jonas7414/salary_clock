@@ -1,6 +1,18 @@
 #pragma once
 #include "app_types.h"
 #include "coin_physics.h"
+// Display-only startup timeline. Wi-Fi/time tasks continue independently.
+class BootAnimation {
+public:
+    static constexpr int64_t DURATION_US=5000000;
+    explicit BootAnimation(int64_t started_us):started_us_(started_us){}
+    float update(int64_t now_us,SystemState state,uint32_t held_ms);
+    bool button_wake() const { return button_wake_; }
+private:
+    int64_t started_us_;
+    bool finished_{};
+    bool button_wake_{};
+};
 class UiAnimation {
 public:
     explicit UiAnimation(uint32_t seed=1):physics_(seed){}

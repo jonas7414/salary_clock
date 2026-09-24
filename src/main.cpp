@@ -19,6 +19,8 @@ extern "C" void app_main() {
     ESP_LOGI("main","Salary Thief Calculator %s",APP_FIRMWARE_VERSION);
     ESP_ERROR_CHECK(esp_task_wdt_reset());
     ESP_ERROR_CHECK(display_start());
+    // The display task plays its intro while these services start and connect.
+    // Never wait for the animation here: Wi-Fi and time sync run in parallel.
     const auto battery_error=battery_manager_start();
     if (battery_error!=ESP_OK) ESP_LOGW("main","Battery monitor unavailable: %s",esp_err_to_name(battery_error));
     ESP_ERROR_CHECK(button_start());

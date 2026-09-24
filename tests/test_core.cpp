@@ -81,6 +81,39 @@ static void display_schedule_tests() {
     CHECK(button.update(false,40)==ButtonAction::None && button.pressed());
     CHECK(button.update(false,70)==ButtonAction::Page && !button.pressed());
 }
+static void boot_animation_tests() {
+    constexpr int64_t start=123456789;
+    BootAnimation boot(start);
+    CHECK(boot.update(start,SYSTEM_BOOTING,0)==0.f);
+    CHECK(boot.update(start+1000000,SYSTEM_CONNECTING_WIFI,0)==.2f);
+    CHECK(boot.update(start+2000000,SYSTEM_SYNCING_TIME,0)==.4f);
+    CHECK(boot.update(start+3000000,SYSTEM_RUNNING,0)==.6f); // Fast Wi-Fi does not skip the version.
+    CHECK(boot.update(start+4999999,SYSTEM_RUNNING,0)<1.f);
+    CHECK(boot.update(start+5000000,SYSTEM_RUNNING,0)==1.f);
+    CHECK(boot.update(start+6000000,SYSTEM_CONNECTING_WIFI,0)==1.f); // Never replay on disconnect.
+    CHECK(boot.update(start,SYSTEM_BOOTING,0)==1.f); // Completed is latched.
+    BootAnimation setup(start),failed(start),held(start),long_uptime(start);
+    CHECK(setup.update(start+1000000,SYSTEM_SETUP_MODE,0)==.2f); // First boot shows version before setup.
+    CHECK(failed.update(start+1000,SYSTEM_ERROR,0)==1.f);
+    CHECK(failed.update(start+2000,SYSTEM_RUNNING,0)==1.f);
+    CHECK(held.update(start+1000,SYSTEM_CONNECTING_WIFI,499)<1.f);
+    CHECK(held.update(start+2000,SYSTEM_CONNECTING_WIFI,500)==1.f);
+    CHECK(held.update(start+3000,SYSTEM_CONNECTING_WIFI,0)==1.f);
+    CHECK(long_uptime.update(start+int64_t(UINT32_MAX)*1000,SYSTEM_RUNNING,0)==1.f);
+    BootAnimation night(start);DisplaySchedulePolicy display;
+    CHECK(display.update({},20*60,true,night.update(start,SYSTEM_RUNNING,0)<1.f,false,0));
+    CHECK(!display.update({},20*60,true,night.update(start+5000000,SYSTEM_RUNNING,0)<1.f,false,5000));
+    CHECK(display.update({},20*60,true,false,true,5040)); // Normal five-minute wake still works.
+    BootAnimation manual(start);DisplaySchedulePolicy manual_display;
+    float progress=manual.update(start,SYSTEM_RUNNING,0);
+    CHECK(manual_display.update({},20*60,true,progress<1.f,true,0));
+    progress=manual.update(start+500000,SYSTEM_RUNNING,500);
+    CHECK(manual.button_wake());
+    CHECK(manual_display.update({},20*60,true,progress<1.f,manual.button_wake(),500));
+    CHECK(manual.update(start+540000,SYSTEM_RUNNING,540)==1.f && !manual.button_wake());
+    CHECK(manual_display.update({},20*60,true,false,false,300499));
+    CHECK(!manual_display.update({},20*60,true,false,false,300500));
+}
 static void salary_tests(const char *oracle) {
     auto c=config_defaults();CHECK(hm_to_seconds(9,30)==34200);
     CHECK(calculate_salary(c,local(2026,9,23,12,0,0),0,false).work_state==WORK_STATE_NO_TIME);
@@ -402,6 +435,61 @@ static void ppm(const std::string &path,const std::vector<uint16_t> &frame) {
     std::ofstream out(path,std::ios::binary);out<<"P6\n320 170\n255\n";
     for(auto p:frame) { const char rgb[]={char(((p>>11)&31)*255/31),char(((p>>5)&63)*255/63),char((p&31)*255/31)};out.write(rgb,3); }
 }
+static void boot_render_tests(const char *directory) {
+    UiModel m{};m.config=config_defaults();m.salary=at(m.config,14,37);
+    std::strcpy(m.firmware,APP_FIRMWARE_VERSION);std::strcpy(m.ssid,"Office Wi-Fi");
+    std::strcpy(m.date,"2026/09/24");std::strcpy(m.clock,"14:37:00");
+    std::vector<uint16_t> full(320*170),strip(320*170),guard(320*10+2,0x55aa);
+    for (int theme=0;theme<3;++theme) {
+        m.theme=static_cast<DisplayTheme>(theme);
+        BootAnimation boot(0);std::vector<uint16_t> first;
+        bool moved=false;
+        for (int frame=0;frame<=125;++frame) {
+            m.connected=frame>=60;m.synced=frame>=80;
+            m.system=m.synced?SYSTEM_RUNNING:m.connected?SYSTEM_SYNCING_TIME:SYSTEM_CONNECTING_WIFI;
+            m.boot_progress=boot.update(frame*40000LL,m.system,0);
+            ui_render(full.data(),0,170,m);
+            if (frame==0) first=full;
+            else if (frame<125) {
+                moved|=full!=first;
+                CHECK(std::equal(full.begin(),full.begin()+25*320,first.begin())); // Version stays readable.
+            }
+            for (int y=0;y<170;y+=10) {
+                ui_render(guard.data()+1,y,10,m);CHECK(guard.front()==0x55aa && guard.back()==0x55aa);
+                std::copy(guard.begin()+1,guard.end()-1,strip.begin()+y*320);
+            }
+            CHECK(full==strip);
+            if (theme==2) {
+                auto colors=full;std::sort(colors.begin(),colors.end());
+                CHECK(std::unique(colors.begin(),colors.end())-colors.begin()<=4);
+            }
+            ppm(std::string(directory)+"/boot_"+std::to_string(theme)+"_"+std::to_string(frame)+".ppm",full);
+        }
+        CHECK(moved);
+        ui_render(strip.data(),0,170,m);CHECK(full==strip); // Goes straight to the salary screen.
+        m.boot_progress=.5f;ui_render(full.data(),0,170,m);const auto intro=full;
+        std::strcpy(m.firmware,"9.9.9");ui_render(strip.data(),0,170,m);
+        CHECK(full!=strip);CHECK(std::equal(full.begin()+25*320,full.end(),strip.begin()+25*320));
+        std::strcpy(m.firmware,APP_FIRMWARE_VERSION);
+        // Background state changes and RTC overlays cannot expose the connection page during the intro.
+        m.rtc.present=true;m.rtc.operation=RtcOperation::Read;m.rtc_progress=.2f;
+        for (int state=0;state<5;++state) {
+            m.system=state==0?SYSTEM_CONNECTING_WIFI:state==1?SYSTEM_SYNCING_TIME:
+                state==2?SYSTEM_SETUP_MODE:SYSTEM_RUNNING;
+            m.connected=state==1 || state==4;m.synced=state>=3;
+            ui_render(full.data(),0,170,m);CHECK(full==intro);
+            m.boot_progress=1.f;m.rtc_progress=1.f;ui_render(strip.data(),0,170,m);
+            CHECK(strip!=intro);
+            ppm(std::string(directory)+"/boot_route_"+std::to_string(theme)+"_"+std::to_string(state)+".ppm",strip);
+            m.boot_progress=.5f;m.rtc_progress=.2f;
+        }
+        m.system=SYSTEM_ERROR;ui_render(full.data(),0,170,m);CHECK(full!=intro);
+        m.boot_progress=1.f;ui_render(strip.data(),0,170,m);CHECK(full==strip);
+        m.system=SYSTEM_RUNNING;m.boot_progress=.5f;m.held_ms=800;
+        ui_render(full.data(),0,170,m);m.boot_progress=1.f;ui_render(strip.data(),0,170,m);CHECK(full==strip);
+        m.held_ms=0;m.rtc={};m.rtc_progress=1.f;
+    }
+}
 static void render_tests(const char *directory) {
     UiModel m{};m.config=config_defaults();m.system=SYSTEM_RUNNING;m.synced=m.connected=m.sntp_synced=true;
     m.salary=at(m.config,14,37,21);std::strcpy(m.clock,"14:37:21");std::strcpy(m.ap_ssid,"SalaryThief-A31F");
@@ -632,7 +720,7 @@ static void battery_render_tests(const char *directory) {
 }
 int main(int argc,char **argv) {
     if(argc!=3)return 2;
-    config_tests();display_schedule_tests();salary_tests(argv[1]);button_tests();wifi_tests();battery_tests();physics_tests();money_gain_tests();transition_tests();
-    render_tests(argv[2]);transition_render_tests(argv[2]);rtc_render_tests(argv[2]);battery_render_tests(argv[2]);
+    config_tests();display_schedule_tests();boot_animation_tests();salary_tests(argv[1]);button_tests();wifi_tests();battery_tests();physics_tests();money_gain_tests();transition_tests();
+    boot_render_tests(argv[2]);render_tests(argv[2]);transition_render_tests(argv[2]);rtc_render_tests(argv[2]);battery_render_tests(argv[2]);
     std::printf("PASS: %u checks (salary, Gregorian calendar, configuration, button, Wi-Fi policy, battery status, physics, animation, rendering)\n",checks);
 }

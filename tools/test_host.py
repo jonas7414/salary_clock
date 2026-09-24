@@ -152,6 +152,18 @@ def main():
         for state in range(5):
             battery_sheet.paste(Image.open(OUT/f"battery_{theme}_{state}.ppm"),(10+theme*330,10+state*185))
     battery_sheet.save(OUT/"battery.png")
+    boot_sheet=Image.new("RGB",(1000,950),"#e8ecee")
+    for theme in range(3):
+        frames=[Image.open(OUT/f"boot_{theme}_{i}.ppm").resize((640,340),Image.Resampling.NEAREST) for i in range(126)]
+        frames[0].save(OUT/f"boot_{theme}.gif",save_all=True,append_images=frames[1:],duration=[40]*125+[1000],loop=0)
+        for row,index in enumerate((0,10,30,80,125)):
+            boot_sheet.paste(Image.open(OUT/f"boot_{theme}_{index}.ppm"),(10+theme*330,10+row*185))
+    boot_sheet.save(OUT/"boot.png")
+    boot_routes=Image.new("RGB",(1000,935),"#e8ecee")
+    for theme in range(3):
+        for state in range(5):
+            boot_routes.paste(Image.open(OUT/f"boot_route_{theme}_{state}.ppm"),(10+theme*330,10+state*185))
+    boot_routes.save(OUT/"boot_routes.png")
     for action,name in enumerate(("rtc_read","rtc_sync","rtc_failed")):
         frames=[Image.open(OUT/f"rtc_{action}_0_{i}.ppm").resize((640,340),Image.Resampling.NEAREST) for i in range(81)]
         frames[0].save(OUT/f"{name}.gif",save_all=True,append_images=frames[1:],duration=40,loop=0)

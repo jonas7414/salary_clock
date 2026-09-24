@@ -1,6 +1,13 @@
 #include "ui_animation.h"
 #include <algorithm>
 #include <cmath>
+float BootAnimation::update(int64_t now,SystemState state,uint32_t held_ms) {
+    // Errors and deliberate long presses must remain visible during startup.
+    button_wake_=!finished_ && held_ms>=500 && state!=SYSTEM_ERROR;
+    if (state==SYSTEM_ERROR || held_ms>=500 || now-started_us_>=DURATION_US) finished_=true;
+    if (finished_) return 1.f;
+    return std::clamp(float(now-started_us_)/float(DURATION_US),0.f,1.f);
+}
 void UiAnimation::update(const SalaryStatus &s,int64_t now,float dt) {
     if (!std::isfinite(dt)) dt=0;
     dt=std::clamp(dt,0.f,.05f);

@@ -200,6 +200,36 @@ void coin(Canvas &c,const Coin &coin) {
         c.rect(cx-w,cy+h,w*2+1,1,ink);
     }
 }
+void boot_scene(Canvas &c,const UiModel &m) {
+    const float t=std::clamp(m.boot_progress,0.f,1.f),seconds=t*5.f;
+    c.text(18,12,"STARTING UP",10,MUTED);
+    char version[sizeof(m.firmware)+2];
+    std::snprintf(version,sizeof(version),"v%s",m.firmware);
+    c.text(302-Canvas::width(version,12),10,version,12,INK);
+
+    c.clip(24,30,272,64);
+    c.ellipse(160,62,49,26,PANEL);
+    c.ellipse(160,62,45,23,BG);
+    c.ellipse(160,88,23,2,LINE);
+    for (int i=0;i<6;++i) {
+        const float angle=seconds*1.8f+i*1.04719755f;
+        const int x=int(std::lround(160+std::cos(angle)*47));
+        const int y=int(std::lround(62+std::sin(angle)*24));
+        c.rect(x-1,y-1,3,3,i%2?GREEN:GOLD);
+    }
+    const float enter=std::clamp(seconds/.85f,0.f,1.f),u=enter-1.f;
+    const float drop=1.f+2.70158f*u*u*u+1.70158f*u*u;
+    Coin icon{}; icon.x=160; icon.y=59-(1.f-drop)*78+std::sin(seconds*3.f)*2;
+    icon.radius=21; icon.rotation=seconds*4.f; icon.angularVelocity=2.5f;
+    coin(c,icon);
+    c.clip();
+
+    c.center(160,96,"薪水小偷計算器",24,GOLD);
+    c.center(160,126,"SALARY THIEF CALCULATOR",10,MUTED);
+    // This bar tracks the short intro, never claims network/download progress.
+    c.rect(48,149,224,3,LINE);
+    c.rect(48,149,int(std::lround(224*t)),3,GREEN);
+}
 void lunch_scene(Canvas &c,uint32_t milliseconds) {
     const uint32_t cycle=milliseconds%4800;
     const float phase=float(cycle)/4800.f;
@@ -429,6 +459,9 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
     const auto theme=display_theme_valid(static_cast<uint32_t>(m.theme))?m.theme:DisplayTheme::Classic;
     Canvas c(pixels,offset,rows,theme); c.rect(0,0,320,170,BG);
     frame(c,m);
+    if (m.boot_progress<1.f && m.system!=SYSTEM_ERROR && m.held_ms<500) {
+        boot_scene(c,m); return;
+    }
     header(c,m); char buf[80];
     if (m.system==SYSTEM_SETUP_MODE) {
         c.text(14,37,"SETUP MODE",24,GOLD);
@@ -438,11 +471,17 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
     } else if (m.system==SYSTEM_ERROR) {
         c.text(14,42,"SYSTEM ERROR",24,GOLD);c.text(14,82,"請查看 USB 記錄並重新開機",16,INK);
     } else if (!m.synced) {
-        c.text(14,40,"準備開始偷薪水",24,GOLD);
-        c.text(14,83,"Waiting for time sync...",16,INK);
-        c.text(14,112,m.connected ? "Wi-Fi connected / SNTP pending" :
-               m.associated ? "Wi-Fi linked / waiting for IP" : "Connecting to Wi-Fi...",12,MUTED);
-        c.text(14,141,m.sntp_wait_expired?"同步尚未成功，請檢查網路":"時間同步後開始計算",12,MUTED);
+        if (!m.connected) {
+            c.text(14,40,"CONNECTING Wi-Fi",24,GOLD);
+            c.text(14,83,m.ssid[0]?m.ssid:"Waiting for Wi-Fi...",16,INK,292);
+            c.text(14,112,m.associated?"Wi-Fi linked / waiting for IP":"Connecting to Wi-Fi...",12,MUTED);
+            c.text(14,141,"連上網路後開始計算",12,MUTED);
+        } else {
+            c.text(14,40,"準備開始偷薪水",24,GOLD);
+            c.text(14,83,"Waiting for time sync...",16,INK);
+            c.text(14,112,"Wi-Fi connected / SNTP pending",12,MUTED);
+            c.text(14,141,m.sntp_wait_expired?"同步尚未成功，請檢查網路":"時間同步後開始計算",12,MUTED);
+        }
     } else if (m.salary.work_state==WORK_STATE_NO_CALENDAR) {
         c.text(14,42,"行事曆待更新",24,GOLD);
         c.text(14,81,"此年度尚未收錄，暫停薪資計算",16,INK);

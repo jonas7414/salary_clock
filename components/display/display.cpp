@@ -134,6 +134,7 @@ void task(void *) {
     std::snprintf(model.idf,sizeof(model.idf),"%s",esp_get_idf_version());
     std::snprintf(model.firmware,sizeof(model.firmware),"%s",APP_FIRMWARE_VERSION);
     TickType_t wake=xTaskGetTickCount(); int64_t last_us=esp_timer_get_time();
+    BootAnimation boot(last_us);
     uint32_t dropped=0;
     while (true) {
         const int64_t frame_start=esp_timer_get_time();
@@ -147,6 +148,7 @@ void task(void *) {
         model.rtc_progress=std::clamp(float(frame_start-model.rtc.activity_started_us)/3200000.f,0.f,
             model.rtc.result==RtcResult::Pending?.8f:1.f);
         model.held_ms=device.button_held_ms; model.sntp_wait_expired=device.sntp_wait_expired;
+        model.boot_progress=boot.update(frame_start,model.system,model.held_ms);
         std::snprintf(model.ap_ssid,sizeof(model.ap_ssid),"%s",device.network.ap_ssid);
         std::snprintf(model.ssid,sizeof(model.ssid),"%s",device.network.ssid);
         std::snprintf(model.ip,sizeof(model.ip),"%s",device.network.ip); model.rssi=device.network.rssi;
@@ -164,15 +166,19 @@ void task(void *) {
             std::strftime(model.date,sizeof(model.date),"%Y/%m/%d",&local);
             std::strftime(model.clock,sizeof(model.clock),"%H:%M:%S",&local);
         }
-        animation.update(model.salary,frame_start,dt);
+        // Let the first visible salary frame announce holidays after the splash.
+        if (model.boot_progress>=1.f) animation.update(model.salary,frame_start,dt);
         model.pulse=animation.pulse();
         model.gain_money=animation.gain_money();
         model.gain_progress=animation.gain_progress();
         model.transition_state=animation.transition_state();
         model.transition_progress=animation.transition_progress();
-        const bool pressed=device.button_presses!=last_button_presses;
+        // A long press that skips the intro also gets the normal night-time wake,
+        // since its original press edge occurred while the intro forced the LCD on.
+        const bool pressed=device.button_presses!=last_button_presses || boot.button_wake();
         last_button_presses=device.button_presses;
-        const bool force_on=(bits&(SETUP_MODE_BIT|SYSTEM_ERROR_BIT)) || !(bits&CONFIG_READY_BIT);
+        const bool force_on=model.boot_progress<1.f ||
+            (bits&(SETUP_MODE_BIT|SYSTEM_ERROR_BIT)) || !(bits&CONFIG_READY_BIT);
         const bool visible=display_policy.update(schedule,minute,model.synced,force_on,pressed,model.animation_ms);
         const auto err=update_screen(model,visible,panel_on);
         if (err!=ESP_OK) {

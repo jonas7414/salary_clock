@@ -4,6 +4,16 @@
 
 本文件中的測試與實板項目分開記錄，不能由「有程式碼」推定實板已通過。
 
+### 開機動畫增量（未發布）
+
+開機金幣動畫從 LCD 就緒後播放五秒，版本號使用 `APP_FIRMWARE_VERSION`（來自 `version.txt`），Wi-Fi 與校時 task 同時在背景運作。動畫結束後使用當下狀態：連線及校時成功直接顯示薪資、未連上且無有效時間顯示 Wi-Fi 連線提示、已連上則只等待校時，首次設定與 RTC 離線運作維持既有流程。動畫期間暫時亮屏，結束後恢復螢幕排程；長按略過動畫時仍有五分鐘的夜間喚醒，操作倒數不會被熄屏隱藏。
+
+`boot_animation_tests()` 涵蓋五秒邊界、背景狀態變化、斷線不重播、錯誤與長按中斷、夜間排程及略過後的喚醒期限。`boot_render_tests()` 檢查三種風格共 378 幀的整幀／strip 一致性、buffer guard、版本列穩定與版本變更、掌機四階色彩，以及連線／校時／設定／RTC 離線的畫面切換。預覽為 `.artifacts/host/boot.png`、`boot_routes.png` 與 `boot_0.gif`～`boot_2.gif`；已目視檢查排版與三種配色。[經典風格動畫](boot.gif) 由實際 C++ renderer 產生。
+
+完整主機測試已通過，記錄在 `.artifacts/host/results.txt`；PlatformIO Core 6.2.0 的 `tdisplay_s3` 與 `tdisplay_s3_no_psram` 均編譯成功，記錄在 `.artifacts/build-boot-animation.log`。產物為各環境 `.pio/build/<環境>/firmware.bin`，尚未燒錄至實板。
+
+實板尚待驗收：已存 Wi-Fi 的裝置需確認動畫期間已開始連線，成功時不閃過連線畫面；關閉 AP、延遲 DHCP 或阻擋 SNTP 時分別確認連線與校時提示；無設定、RTC 離線、夜間啟動及長按操作也需確認。兩種 framebuffer 模式都需確認動畫流暢度，未燒錄前不視為實板通過。
+
 ### 螢幕排程增量（未發布）
 
 `display_schedule_tests()` 驗證預設 08:00–19:00、全天各分鐘與跨午夜時段、相同時間全天亮屏、五分鐘喚醒到期、再次按下延長、毫秒計數器回繞、校時跳動，以及未校時／設定模式的亮屏例外。按鈕在消抖後的按下瞬間喚醒，不必等到放開；原本短按切頁與長按操作繼續有效。

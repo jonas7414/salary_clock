@@ -1,6 +1,6 @@
 {
-  "date": "2026-09-23",
-  "firmware_version": "1.4.0",
+  "date": "2026-09-24",
+  "firmware_version": "1.4.1",
   "platformio_versions_verified": [
     "6.2.0"
   ],
@@ -15,15 +15,15 @@
       "platformio": "6.2.0",
       "psram_enabled": true,
       "static_ram_bytes": 38988,
-      "flash_usage_bytes": 1283959,
+      "flash_usage_bytes": 1283927,
       "artifacts": {
         "firmware.bin": {
-          "bytes": 1284368,
-          "sha256": "e5fa7a1999087eeeceb39a4ae30fb8ab0b581523d970ad91a525de672143cda4"
+          "bytes": 1284336,
+          "sha256": "ea4e2f8ffc4725d3729dfb0ba93f29b8b15d58398e6577fad46985e1addef3b0"
         },
         "bootloader.bin": {
           "bytes": 22736,
-          "sha256": "c5a2407e90a582892d213ab1ac6ad8f39cf1dd9b33ca3c31803e7257a73fda69"
+          "sha256": "74a634e9a1a49985861e514471065c2626cceb305125ebaa72bf5aea3bf2c183"
         },
         "partitions.bin": {
           "bytes": 3072,
@@ -35,9 +35,10 @@
         }
       },
       "ota_partition_bytes": 4194304,
-      "remaining_ota_bytes": 2909936,
+      "remaining_ota_bytes": 2909968,
       "rollback_enabled": true,
-      "tls_certificate_bundle_enabled": true
+      "tls_certificate_bundle_enabled": true,
+      "build_log": ".artifacts/build-v1.4.1-psram.log"
     },
     "tdisplay_s3_no_psram": {
       "status": "SUCCESS",
@@ -48,11 +49,11 @@
       "artifacts": {
         "firmware.bin": {
           "bytes": 1274384,
-          "sha256": "610bc02a1ef2d1a069dcd5d70fadb0e73187df4b36198cb2a5f1169b1c502f04"
+          "sha256": "367e7b99ddd495ce68a5c8324f01d46b8ab3a6237851b46ca9a189700dffe0ae"
         },
         "bootloader.bin": {
           "bytes": 22736,
-          "sha256": "7c47ec11f513db0105b4ef63807a9c707eee717c60d878577449d383527156e5"
+          "sha256": "a80b7c2483b7974436fc48020dcbd9a2e19824b19f7b4266a66859cd425d50e2"
         },
         "partitions.bin": {
           "bytes": 3072,
@@ -66,10 +67,10 @@
       "ota_partition_bytes": 4194304,
       "remaining_ota_bytes": 2919920,
       "rollback_enabled": true,
-      "tls_certificate_bundle_enabled": true
+      "tls_certificate_bundle_enabled": true,
+      "build_log": ".artifacts/build-v1.4.1.log"
     }
   },
-  "build_log": ".artifacts/build-v1.4.0.log",
   "release_guard_test_groups": 3,
   "ota_hardware_tested": false,
   "ota_policy": "Check once on every boot after Wi-Fi and time sync, then wait 20s; manual requests supported",
@@ -96,5 +97,15 @@
     "snapshot_header_consistent": true,
     "september_2026_default_workdays": 20,
     "september_2026_default_hours": 160
+  },
+  "build_logs": [
+    ".artifacts/build-v1.4.1.log",
+    ".artifacts/build-v1.4.1-psram.log"
+  ],
+  "linux_core_checks": {
+    "compiler": "Ubuntu GCC 15.2.0",
+    "checks_passed": 461061,
+    "warnings_as_errors": true,
+    "fortify_source": 3
   }
 }

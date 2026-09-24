@@ -6,7 +6,7 @@
 
 主機共 **1,548,636 項 C++ 檢查通過**（核心 461,061、堆疊 1,087,162、NVS 72、JSON 58、OTA 283），另有 6 組 Python 行事曆測試與 3 組 release guard 測試。可攜的結果見 [host-results.txt](host-results.txt) 與 [build-results.json](build-results.json)，後者包含韌體 SHA256。OTA 實板測試矩陣見 [ota.md](ota.md)。
 
-v1.4.0 使用 Core 6.2.0、Espressif32 6.12.0、ESP-IDF 5.5.0；`core_dir = .tools/platformio` 沿用現有套件。本機雙環境建置記錄為 `.artifacts/build-v1.4.0.log`。實板完整更新、斷電及回滾仍需依下列程序驗收；CI 發布狀態見 [GitHub Actions](https://github.com/jonas7414/salary_clock/actions/workflows/release.yml)。
+v1.4.1 使用 Core 6.2.0、Espressif32 6.12.0、ESP-IDF 5.5.0；`core_dir = .tools/platformio` 沿用現有套件。本機建置記錄為 `.artifacts/build-v1.4.1.log` 與標準版清除 CMake 快取後的 `.artifacts/build-v1.4.1-psram.log`。實板完整更新、斷電及回滾仍需依下列程序驗收；CI 發布狀態見 [GitHub Actions](https://github.com/jonas7414/salary_clock/actions/workflows/release.yml)。
 
 1.2.0 的裝置紀錄已確認 SNTP、GitHub TLS 驗證與 1.2.1 版本偵測，下載到至少 10% 後遇到兩次 errno 11，最後保留舊版。v1.2.2 新增短讀／EAGAIN 恢復、不重複資料、重試上限、總期限、取消與重新下載測試；尚未以此修正版在實板重現相同網路停頓。
 
@@ -26,21 +26,23 @@ v1.4.0 使用 Core 6.2.0、Espressif32 6.12.0、ESP-IDF 5.5.0；`core_dir = .too
 | 政府行事曆 | 2026–2027 全部 730 天、每月工作日／工時、未收錄年度、補班與閏年生成案例 |
 | 加錢、時段與假日動畫 | 三種風格、整幀／strip 一致性、文字進退場、假日首次進入與跨日重播規則 |
 | 手機設定頁 | JavaScript 語法與 DOM ID 參照檢查；本版未重做瀏覽器互動測試 |
-| ESP-IDF 預設 build | `pio run -e tdisplay_s3`：SUCCESS；`.artifacts/build-v1.4.0.log` |
-| 無 PSRAM build | `pio run -e tdisplay_s3_no_psram`：SUCCESS；`.artifacts/build-v1.4.0.log` |
+| ESP-IDF 預設 build | `pio run -e tdisplay_s3`：SUCCESS；`.artifacts/build-v1.4.1-psram.log` |
+| 無 PSRAM build | `pio run -e tdisplay_s3_no_psram`：SUCCESS；`.artifacts/build-v1.4.1.log` |
 
 | 組態 | 靜態 RAM | 程式 Flash 用量 | firmware.bin |
 | --- | ---: | ---: | ---: |
-| PSRAM 預設 | 38,988 bytes | 1,283,959 bytes | 1,284,368 bytes |
+| PSRAM 預設 | 38,988 bytes | 1,283,927 bytes | 1,284,336 bytes |
 | 無 PSRAM | 37,560 bytes | 1,273,979 bytes | 1,274,384 bytes |
 
 上述 RAM 是 linker 的靜態用量，不含執行時 task、Wi-Fi、HTTP 與 framebuffer 配置。已檢查實際產生的 sdkconfig：兩者均為 ESP32-S3、16 MB QIO、FreeRTOS 1000 Hz；預設為 Octal PSRAM，備援組態 `SPIRAM=false`。兩者 firmware 都小於 4 MiB app partition。
 
 本版三種風格的月工時及休假場景預覽已做目視檢查，皆為 320×170 橫向。2026 年 9 月預設排程確認為 20 個工作日、160 小時。行事曆快照與產生的 C++ 資料一致，僅保留 2026 年起資料。ESP32 HTTP／RF 整合、實際螢幕流暢度及完整 OTA 更新仍待實板驗收。
 
+v1.4.0 的 Linux CI 在動畫測試的時間字串格式遇到 `-Werror=format-truncation`，未發布 Release。v1.4.1 明確限制格式化的小時與分鐘範圍；本機 Ubuntu GCC 15.2.0（`-O2 -Wall -Wextra -Werror -D_FORTIFY_SOURCE=3`）已通過全部 461,061 項核心檢查。
+
 ## 實板程序
 
-下列需要指定的 LILYGO 目標板；本次 v1.4.0 更新尚未在實板驗證。使用者提供的 v1.0.0 連線記錄已納入回歸案例。Host adapter 測試不替代 flash 斷電或 RF 測試。
+下列需要指定的 LILYGO 目標板；本次 v1.4.1 更新尚未在實板驗證。使用者提供的 v1.0.0 連線記錄已納入回歸案例。Host adapter 測試不替代 flash 斷電或 RF 測試。
 
 1. **無 NVS／第一次上電**：重設此產品 namespace 後，應顯示橫向 Setup、MAC 尾碼 AP 與 192.168.4.1。用手機開網頁，確認沒有外部資源要求。
 2. **Wi-Fi Scan／hidden SSID**：掃描顯示 RSSI、安全模式；點選填入。手動輸入隱藏 SSID。錯誤密碼重開機後約 20 秒回 Setup。

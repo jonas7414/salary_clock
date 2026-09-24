@@ -420,7 +420,7 @@ static void transition_render_tests(const char *directory) {
         const int minute=minutes[event];
         m.salary=at(m.config,minute/60,minute%60,0,event==4?25:23);
         std::strcpy(m.date,event==4?"2026/09/25":"2026/09/23");
-        std::snprintf(m.clock,sizeof(m.clock),"%02d:%02d:00",minute/60,minute%60);
+        std::snprintf(m.clock,sizeof(m.clock),"%02u:%02u:00",unsigned(minute/60)%24U,unsigned(minute)%60U);
         ui_render(full.data(),0,170,m);const auto baseline=full;
         UiAnimation animation;
         animation.update(event==4?at(m.config,23,59,59,24):at(m.config,(minute-1)/60,(minute-1)%60,59),0,.04f);

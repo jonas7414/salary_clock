@@ -1,4 +1,4 @@
-# GitHub Releases OTA（v1.4.0）
+# GitHub Releases OTA（v1.4.1）
 
 ## 實際行為
 
@@ -162,13 +162,13 @@ v1.3.0 的螢幕風格另外存於 `salary_thief/theme`（uint32 blob：0 經典
 
 ```sh
 git add .
-git commit -m "Add Taiwan calendar and holiday animations in v1.4.0"
+git commit -m "Add Taiwan calendar and holiday animations in v1.4.1"
 git push origin main
-git tag v1.4.0
-git push origin v1.4.0
+git tag v1.4.1
+git push origin v1.4.1
 ```
 
-已安裝支援 OTA 的 1.2.x／1.3.0 可重新開機檢查 v1.4.0。下載期間執行的是裝置目前的下載器，1.2.2 起具備逾時重試；若 1.2.0／1.2.1 的舊下載器反覆逾時，需先透過 USB 安裝修正版。若已安裝 1.4.0，看到相同版本會跳過更新；下一次 OTA 測試需發布更高版本。沒有 OTA 的舊版必須先完成 USB 安裝。
+已安裝支援 OTA 的 1.2.x／1.3.0 可重新開機檢查 v1.4.1。下載期間執行的是裝置目前的下載器，1.2.2 起具備逾時重試；若 1.2.0／1.2.1 的舊下載器反覆逾時，需先透過 USB 安裝修正版。若已安裝 1.4.1，看到相同版本會跳過更新；下一次 OTA 測試需發布更高版本。沒有 OTA 的舊版必須先完成 USB 安裝。
 
 Release 必須有 `firmware.bin`、`firmware.sha256`、`firmware-no-psram.bin`、`firmware-no-psram.sha256`。只發布 app binary，bootloader／partition table 不透過此 OTA 改寫。Release notes 不宜過長，以免完整 API JSON 超過 32 KiB。
 
@@ -178,7 +178,7 @@ Release 必須有 `firmware.bin`、`firmware.sha256`、`firmware-no-psram.bin`�
 
 | 組態 | firmware.bin | OTA slot | 剩餘空間 |
 | --- | ---: | ---: | ---: |
-| PSRAM | 1,284,368 bytes | 4,194,304 bytes | 2,909,936 bytes |
+| PSRAM | 1,284,336 bytes | 4,194,304 bytes | 2,909,968 bytes |
 | 無 PSRAM | 1,274,384 bytes | 4,194,304 bytes | 2,919,920 bytes |
 
 主機測試直接使用 production SemVer、cJSON parser、checksum／URL policy、probation 與串流順序。故障注入涵蓋每個讀取邊界中斷、短讀、過長、write／digest／image／activation 失敗，檢查前序失敗時 activation 未呼叫；這不替代實際 Flash／bootloader 的斷電保證。

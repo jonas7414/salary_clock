@@ -307,6 +307,22 @@ void footer(Canvas &c,const UiModel &m) {
         else c.rect(283+i*7,158,5,4,i==m.page?GOLD:LINE);
     }
 }
+void battery_info(Canvas &c,const BatteryStatus &battery) {
+    char value[80];
+    switch (battery.state) {
+        case BatteryState::BatteryPower:
+            std::snprintf(value,sizeof(value),"BAT:Likely  Supply %u.%02uV",unsigned(battery.supply_mv/1000),unsigned(battery.supply_mv%1000/10));break;
+        case BatteryState::ExternalPower:
+            std::snprintf(value,sizeof(value),"BAT:Unknown (USB/5V)  %u.%02uV",unsigned(battery.supply_mv/1000),unsigned(battery.supply_mv%1000/10));break;
+        case BatteryState::Unknown:
+            std::snprintf(value,sizeof(value),"BAT:Unknown  Supply %u.%02uV",unsigned(battery.supply_mv/1000),unsigned(battery.supply_mv%1000/10));break;
+        case BatteryState::Unavailable:std::snprintf(value,sizeof(value),"BAT:Unknown / Read unavailable");break;
+        default:std::snprintf(value,sizeof(value),"BAT:Checking...");break;
+    }
+    c.clip(12,132,296,14);
+    c.text(12,134,value,10,battery.state==BatteryState::BatteryPower?GREEN:MUTED,296);
+    c.clip();
+}
 void frame(Canvas &c,const UiModel &m) {
     if (m.theme==DisplayTheme::Amber) {
         // Open corners suggest a terminal viewport without covering any text.
@@ -379,6 +395,35 @@ void schedule_transition(Canvas &c,const UiModel &m) {
     c.text(160-Canvas::width(caption,12)/2,112,caption,12,INK,280,opacity);
     c.clip();
 }
+void rtc_sync(Canvas &c,const UiModel &m) {
+    if (!m.rtc.present || m.rtc.operation==RtcOperation::None || m.rtc_progress>=1.f ||
+        m.held_ms>=500 || m.system==SYSTEM_SETUP_MODE || m.system==SYSTEM_ERROR) return;
+    const float t=std::clamp(m.rtc_progress,0.f,1.f);
+    const float enter=std::clamp(t/.16f,0.f,1.f),leave=std::clamp((t-.82f)/.18f,0.f,1.f);
+    const float u=enter-1.f;
+    const float pop=1.f+2.70158f*u*u*u+1.70158f*u*u;
+    const auto opacity=uint8_t(std::lround(15.f*std::min(1.f,t/.035f)*(1.f-leave)));
+    const bool reading=m.rtc.operation==RtcOperation::Read;
+    const bool success=m.rtc.result==RtcResult::Success,failed=m.rtc.result==RtcResult::Failed;
+    const uint16_t accent=success?GREEN:GOLD;
+    c.clip(8,31,304,114);
+    c.rect(8,31,304,114,PANEL,opacity);
+    c.rect(8,31,304,2,accent,opacity);c.rect(8,143,304,2,accent,opacity);
+    const char *title=failed?"RTC SYNC FAILED":reading?"RTC READ":"RTC SYNC";
+    c.zoom_text(160,66+int((1.f-enter)*10.f),title,24,.70f+.30f*pop,accent,opacity);
+    const char *direction=reading?"DS3231 -> CLOCK":"Wi-Fi -> DS3231";
+    c.text(160-Canvas::width(direction,12)/2,88,direction,12,INK,280,opacity);
+    // Chasing dots keep the short I2C transfer visibly animated for 3.2 seconds.
+    const unsigned phase=m.animation_ms/120%5;
+    for (unsigned i=0;i<5;++i) {
+        const int lift=i==phase?3:0;
+        c.rect(135+int(i)*11,110-lift,6,6,i==phase?accent:LINE,opacity);
+    }
+    const char *result=failed?(reading?"WAITING FOR NETWORK TIME":"WRITE FAILED / USING SYSTEM TIME"):
+        success?(reading?"HWCLOCK READY":"RTC SAVED"):"SYNCHRONIZING...";
+    c.text(160-Canvas::width(result,10)/2,126,result,10,accent,284,opacity);
+    c.clip();
+}
 }
 void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
     const auto theme=display_theme_valid(static_cast<uint32_t>(m.theme))?m.theme:DisplayTheme::Classic;
@@ -429,7 +474,7 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
             c.clip();
             progress(c,m);
             std::snprintf(buf,sizeof(buf),"%.0f%%",m.salary.progress*100); c.text(270,142,buf,12,INK);
-            c.text(12,157,m.connected?"ONLINE":"OFFLINE / CLOCK RUNNING",10,MUTED);
+            c.text(12,157,m.rtc.present?"HWCLOCK MODE":m.connected?"ONLINE":"OFFLINE / CLOCK RUNNING",10,MUTED);
         } else if (m.page==1) {
             c.text(12,37,"還能偷多少",16,INK);
             c.text(12,63,"今天還能偷 / NT$",12,MUTED); money(c,12,83,m.salary.remaining_money,188);
@@ -456,17 +501,21 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
             }
         } else {
             c.text(12,33,"系統資訊",16,INK);
+            const char *rtc_label=m.rtc.present?"RTC:Enable":"RTC:None";
+            c.text(306-Canvas::width(rtc_label,12),35,rtc_label,12,m.rtc.present?GREEN:MUTED);
             c.text(12,55,"SSID",10,MUTED);c.text(52,53,m.ssid,12,INK,254);
-            std::snprintf(buf,sizeof(buf),"IP %s   RSSI %d dBm",m.ip,m.rssi);c.text(12,73,buf,10,INK);
-            std::snprintf(buf,sizeof(buf),"SNTP %s   IDF %s",m.synced?"SYNCED":"WAITING",m.idf);c.text(12,88,buf,10,INK);
-            std::snprintf(buf,sizeof(buf),"FW %s   Config v%lu   Up %lus",m.firmware,static_cast<unsigned long>(m.config.version),static_cast<unsigned long>(m.uptime));c.text(12,103,buf,10,INK);
-            std::snprintf(buf,sizeof(buf),"Heap %luK   PSRAM %luK   %s",static_cast<unsigned long>(m.free_heap/1024),static_cast<unsigned long>(m.free_psram/1024),m.partial?"PARTIAL":"DOUBLE");c.text(12,118,buf,10,INK);
-            std::snprintf(buf,sizeof(buf),"Frame %luus   Missed %lu",static_cast<unsigned long>(m.frame_us),static_cast<unsigned long>(m.dropped_frames));c.text(12,133,buf,10,MUTED);
+            std::snprintf(buf,sizeof(buf),"IP %s   RSSI %d dBm",m.ip,m.rssi);c.text(12,69,buf,10,INK);
+            std::snprintf(buf,sizeof(buf),"SNTP %s   IDF %s",m.sntp_synced?"SYNCED":"WAITING",m.idf);c.text(12,82,buf,10,INK);
+            std::snprintf(buf,sizeof(buf),"FW %s   Config v%lu   Up %lus",m.firmware,static_cast<unsigned long>(m.config.version),static_cast<unsigned long>(m.uptime));c.text(12,95,buf,10,INK);
+            std::snprintf(buf,sizeof(buf),"Heap %luK   PSRAM %luK   %s",static_cast<unsigned long>(m.free_heap/1024),static_cast<unsigned long>(m.free_psram/1024),m.partial?"PARTIAL":"DOUBLE");c.text(12,108,buf,10,INK);
+            std::snprintf(buf,sizeof(buf),"Frame %luus   Missed %lu",static_cast<unsigned long>(m.frame_us),static_cast<unsigned long>(m.dropped_frames));c.text(12,121,buf,10,MUTED);
+            battery_info(c,m.battery);
             c.text(12,152,"Long press: 5 sec Setup / 10 sec Reset",10,GOLD);
         }
         footer(c,m);
         schedule_transition(c,m);
     }
+    rtc_sync(c,m);
     if (m.held_ms>=500) {
         c.rect(40,36,240,105,PANEL);c.rect(40,36,240,2,GOLD);
         if (m.held_ms<5000) {

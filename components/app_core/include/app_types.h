@@ -11,6 +11,14 @@ enum SystemState { SYSTEM_BOOTING, SYSTEM_SETUP_MODE, SYSTEM_CONNECTING_WIFI,
 enum WorkState { WORK_STATE_NO_TIME, WORK_STATE_DAY_OFF, WORK_STATE_BEFORE_WORK,
                  WORK_STATE_WORKING_MORNING, WORK_STATE_LUNCH,
                  WORK_STATE_WORKING_AFTERNOON, WORK_STATE_AFTER_WORK, WORK_STATE_NO_CALENDAR };
+enum class RtcOperation : uint8_t { None, Read, Write };
+enum class RtcResult : uint8_t { Pending, Success, Failed };
+struct RtcStatus {
+    bool present{}, valid{};
+    RtcOperation operation{RtcOperation::None};
+    RtcResult result{RtcResult::Pending};
+    int64_t activity_started_us{};
+};
 // Times are minutes since midnight. work_days is retained for NVS compatibility;
 // the Taiwan government calendar now determines the actual work/rest dates.
 struct AppConfig {

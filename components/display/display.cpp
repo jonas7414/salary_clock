@@ -121,6 +121,11 @@ void task(void *) {
         const auto device=device_snapshot(); model.salary=salary_snapshot(); model.system=system_state();
         const auto bits=xEventGroupGetBits(system_events()); model.synced=bits&TIME_SYNCED_BIT; model.connected=bits&WIFI_CONNECTED_BIT;
         model.associated=bits&WIFI_ASSOCIATED_BIT;
+        model.sntp_synced=bits&SNTP_SYNCED_BIT;
+        model.rtc=device.rtc;
+        model.battery=device.battery;
+        model.rtc_progress=std::clamp(float(frame_start-model.rtc.activity_started_us)/3200000.f,0.f,
+            model.rtc.result==RtcResult::Pending?.8f:1.f);
         model.held_ms=device.button_held_ms; model.sntp_wait_expired=device.sntp_wait_expired;
         std::snprintf(model.ap_ssid,sizeof(model.ap_ssid),"%s",device.network.ap_ssid);
         std::snprintf(model.ssid,sizeof(model.ssid),"%s",device.network.ssid);

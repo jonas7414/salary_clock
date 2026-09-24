@@ -29,7 +29,7 @@ def main():
     env["ZIG_LOCAL_CACHE_DIR"]=str(ROOT/".tools"/"zig-local")
     compiler=[args.zig,"c++"] if args.zig else [args.cxx]
     sources=["tests/test_core.cpp","components/app_core/app_types.cpp","components/app_core/salary_math.cpp",
-             "components/app_core/taiwan_calendar.cpp",
+             "components/app_core/taiwan_calendar.cpp","components/app_core/battery_status.cpp",
              "components/app_core/button_logic.cpp","components/coin_physics/coin_physics.cpp",
              "components/display/ui_animation.cpp","components/display/ui_renderer.cpp"]
     binary=OUT/("test_core.exe" if os.name=="nt" else "test_core")
@@ -55,6 +55,14 @@ def main():
         print(result.stderr,end="")
         result.check_returncode()
     (OUT/"results.txt").write_text(result.stdout,encoding="utf-8")
+    rtc_binary=OUT/("test_rtc.exe" if os.name=="nt" else "test_rtc")
+    subprocess.run(compiler+["-std=c++17","-O2","-Wall","-Wextra","-Werror",
+        "-Itests/stubs","-Icomponents/time_manager/include","tests/test_rtc.cpp",
+        "components/time_manager/ds3231_time.cpp","components/time_manager/ds3231.cpp",
+        "-o",str(rtc_binary)],cwd=ROOT,env=env,check=True)
+    rtc_result=subprocess.run([str(rtc_binary)],cwd=ROOT,env=env,check=True,capture_output=True,text=True)
+    print(rtc_result.stdout,end="")
+    with (OUT/"results.txt").open("a",encoding="utf-8") as f:f.write(rtc_result.stdout)
     stack_binary=OUT/("test_coin_stack.exe" if os.name=="nt" else "test_coin_stack")
     subprocess.run(compiler+["-std=c++17","-O2","-Wall","-Wextra","-Werror",
         "-Icomponents/coin_physics/include","tests/test_coin_stack.cpp",
@@ -133,6 +141,20 @@ def main():
         for theme in range(3):
             transitions.paste(Image.open(OUT/f"transition_{event}_{theme}_30.ppm"),(10+theme*330,10+event*185))
     transitions.save(OUT/"transitions.png")
+    rtc_sheet=Image.new("RGB",(1000,750),"#e8ecee")
+    for theme in range(3):
+        rtc_sheet.paste(Image.open(OUT/f"rtc_mode_{theme}.ppm"),(10+theme*330,10))
+        for action in range(3):
+            rtc_sheet.paste(Image.open(OUT/f"rtc_{action}_{theme}_30.ppm"),(10+theme*330,195+action*185))
+    rtc_sheet.save(OUT/"rtc.png")
+    battery_sheet=Image.new("RGB",(1000,930),"#e8ecee")
+    for theme in range(3):
+        for state in range(5):
+            battery_sheet.paste(Image.open(OUT/f"battery_{theme}_{state}.ppm"),(10+theme*330,10+state*185))
+    battery_sheet.save(OUT/"battery.png")
+    for action,name in enumerate(("rtc_read","rtc_sync","rtc_failed")):
+        frames=[Image.open(OUT/f"rtc_{action}_0_{i}.ppm").resize((640,340),Image.Resampling.NEAREST) for i in range(81)]
+        frames[0].save(OUT/f"{name}.gif",save_all=True,append_images=frames[1:],duration=40,loop=0)
     print(f"Previews: {OUT / 'screens.png'}; {OUT / 'coin_physics.gif'}; {OUT / 'lunch.gif'}; {OUT / 'rest.gif'}; {OUT / 'money_gain.gif'}; {OUT / 'transitions.png'}")
 
 if __name__=="__main__":main()

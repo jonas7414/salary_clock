@@ -94,7 +94,7 @@ void task(void *) {
         const auto link=(bits&WIFI_CONNECTED_BIT) ? WifiLinkState::Online :
                         (bits&WIFI_ASSOCIATED_BIT) ? WifiLinkState::WaitingForIp :
                         (bits&WIFI_CONNECTING_BIT) ? WifiLinkState::Connecting : WifiLinkState::Disconnected;
-        const auto action=(bits&WIFI_STARTED_BIT) ? policy.update(link,bits&SETUP_MODE_BIT,now) : WifiAction::None;
+        const auto action=(bits&WIFI_STARTED_BIT) ? policy.update(link,bits&SETUP_MODE_BIT,now,bits&RTC_READY_BIT) : WifiAction::None;
         if (action==WifiAction::Setup) {
             ESP_LOGW(TAG,"%s; opening setup",link==WifiLinkState::WaitingForIp ?
                      "DHCP timeout: associated but no IP after 60s" : "AP connection timeout after 20s");

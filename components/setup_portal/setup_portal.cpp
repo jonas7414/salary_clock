@@ -94,6 +94,15 @@ esp_err_t status(httpd_req_t *r) {
     cJSON_AddBoolToObject(j,"wifi_associated",bits&WIFI_ASSOCIATED_BIT);
     cJSON_AddBoolToObject(j,"wifi_connecting",bits&WIFI_CONNECTING_BIT);
     cJSON_AddBoolToObject(j,"time_synced",bits&TIME_SYNCED_BIT);
+    cJSON_AddBoolToObject(j,"sntp_synced",bits&SNTP_SYNCED_BIT);
+    cJSON_AddBoolToObject(j,"rtc_present",d.rtc.present);
+    cJSON_AddBoolToObject(j,"rtc_valid",d.rtc.valid);
+    cJSON_AddStringToObject(j,"battery_state",battery_state_name(d.battery.state));
+    if (d.battery.supply_mv) cJSON_AddNumberToObject(j,"supply_mv",d.battery.supply_mv);
+    else cJSON_AddNullToObject(j,"supply_mv");
+    // This is an inference under battery power, not a connector-presence sensor.
+    if (d.battery.state==BatteryState::BatteryPower) cJSON_AddBoolToObject(j,"battery_present_estimate",true);
+    else cJSON_AddNullToObject(j,"battery_present_estimate");
     cJSON_AddBoolToObject(j,"sntp_wait_expired",d.sntp_wait_expired);
     cJSON_AddStringToObject(j,"ssid",d.network.ssid); cJSON_AddStringToObject(j,"ip",d.network.ip);
     cJSON_AddStringToObject(j,"ap_ssid",d.network.ap_ssid); cJSON_AddNumberToObject(j,"rssi",d.network.rssi);

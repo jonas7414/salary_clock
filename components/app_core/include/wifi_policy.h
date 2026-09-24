@@ -6,7 +6,7 @@ class WifiPolicy {
 public:
     static constexpr int64_t CONNECT_TIMEOUT_US=20000000, DHCP_TIMEOUT_US=60000000, RETRY_US=5000000;
     explicit WifiPolicy(bool configured,int64_t now_us):configured_(configured),boot_at_(now_us),state_at_(now_us),retry_at_(now_us){}
-    WifiAction update(WifiLinkState state,bool setup,int64_t now_us) {
+    WifiAction update(WifiLinkState state,bool setup,int64_t now_us,bool offline_clock=false) {
         if (setup) return WifiAction::None;
         if (!configured_) return WifiAction::Setup;
         if (state!=state_) {
@@ -18,9 +18,9 @@ public:
             // Association succeeded: DHCP gets its own deadline, starting here.
             if (now_us-state_at_<DHCP_TIMEOUT_US || recovery_requested_) return WifiAction::None;
             recovery_requested_=true;
-            return connected_once_ ? WifiAction::Disconnect : WifiAction::Setup;
+            return connected_once_ || offline_clock ? WifiAction::Disconnect : WifiAction::Setup;
         }
-        if (!connected_once_ && now_us-boot_at_>=CONNECT_TIMEOUT_US) return WifiAction::Setup;
+        if (!connected_once_ && !offline_clock && now_us-boot_at_>=CONNECT_TIMEOUT_US) return WifiAction::Setup;
         if (state==WifiLinkState::Connecting) {
             // Do not restart a driver scan/auth attempt every five seconds.
             if (now_us-state_at_>=CONNECT_TIMEOUT_US && !recovery_requested_) {

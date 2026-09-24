@@ -4,6 +4,7 @@
 #include "button.h"
 #include "wifi_manager.h"
 #include "time_manager.h"
+#include "battery_manager.h"
 #include "salary.h"
 #include "ota_manager.h"
 #include "esp_log.h"
@@ -18,6 +19,8 @@ extern "C" void app_main() {
     ESP_LOGI("main","Salary Thief Calculator %s",APP_FIRMWARE_VERSION);
     ESP_ERROR_CHECK(esp_task_wdt_reset());
     ESP_ERROR_CHECK(display_start());
+    const auto battery_error=battery_manager_start();
+    if (battery_error!=ESP_OK) ESP_LOGW("main","Battery monitor unavailable: %s",esp_err_to_name(battery_error));
     ESP_ERROR_CHECK(button_start());
     ESP_ERROR_CHECK(salary_start());
     ESP_ERROR_CHECK(time_manager_start());

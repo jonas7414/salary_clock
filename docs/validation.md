@@ -4,6 +4,28 @@
 
 本文件中的測試與實板項目分開記錄，不能由「有程式碼」推定實板已通過。
 
+### 電池資訊增量（未發布）
+
+原廠資料與偵測限制見 [LiPo 電池資訊](battery.md)。`battery_tests()` 驗證供電分類、三次穩定判定、USB 插拔、模糊電壓區間、錯誤讀值與恢復；`battery_render_tests()` 檢查三種風格下五種狀態的整幀／strip 一致性、buffer guard 與文字範圍。畫面預覽在 `.artifacts/host/battery.png`，實板接入、拔除與電壓比對仍待驗收。
+
+完整主機測試已通過，記錄在 `.artifacts/host/results.txt`；電池畫面已目視檢查。`tdisplay_s3`／`tdisplay_s3_no_psram` 兩種韌體均編譯成功，最新紀錄為 `.artifacts/build-battery-final.log`。尚未燒錄至實板。
+
+### DS3231 增量驗證（未發布）
+
+`tools/test_host.py` 新增真正 DS3231 驅動搭配 fake I²C adapter 的 73,265 項檢查，包含 2000–2099 全部日期、UTC／BCD、12 小時 AM/PM、2038 邊界、OSF、未接裝置、備援振盪器啟用、寫入讀回驗證與各傳輸階段失敗。另有 RTC 離線開機的 Wi-Fi 重連策略測試，以及三種風格下讀取／寫入／失敗動畫的整幀與 strip 一致性、buffer guard、範圍與退場檢查。執行結果見 `.artifacts/host/results.txt`，畫面見 `.artifacts/host/rtc.png`，動畫見 `rtc_read.gif`、`rtc_sync.gif`、`rtc_failed.gif`；畫面已目視檢查。
+
+PlatformIO Core 6.2.0 的 `tdisplay_s3` 與 `tdisplay_s3_no_psram` 均編譯成功，記錄在 `.artifacts/build-rtc.log`；產物為各環境 `.pio/build/<環境>/firmware.bin`。尚未燒錄至實板。
+
+以下 RTC 實板項目仍待接線驗收：
+
+1. 不接 DS3231 開機，確認原本 SNTP 校時、`ONLINE`／離線標籤與初次 Wi-Fi 逾時設定流程維持不變。
+2. 接上 SDA=GPIO18、SCL=GPIO17、3.3V、GND；首次或失效 RTC 在取得 SNTP 前不計薪，取得後播放 `RTC SYNC` 並顯示 `RTC SAVED`，主頁標籤為 `HWCLOCK MODE`。
+3. 安裝適用備援電池、完成校時後關閉基地台並斷電重啟；確認播放 `RTC READ`、時間正確且繼續計薪。等待超過 60 秒仍保持時鐘頁，開啟基地台後可重連並再次寫入 RTC。
+4. RTC 接妥但阻擋 NTP：有有效 RTC 時繼續運作，無有效時間時仍等待；單純取得 Wi-Fi IP 不會覆寫 RTC。
+5. 驗證三種風格與 DOUBLE／PARTIAL 模式的同步動畫、按鈕提示優先顯示，以及切換時區後不會將偏移重複套入 RTC。
+
+下方版本用量與既有實板紀錄屬於原發布版本，不能視為新增 RTC 的實板結果。
+
 主機共 **1,548,636 項 C++ 檢查通過**（核心 461,061、堆疊 1,087,162、NVS 72、JSON 58、OTA 283），另有 6 組 Python 行事曆測試與 3 組 release guard 測試。可攜的結果見 [host-results.txt](host-results.txt) 與 [build-results.json](build-results.json)，後者包含韌體 SHA256。OTA 實板測試矩陣見 [ota.md](ota.md)。
 
 v1.4.1 使用 Core 6.2.0、Espressif32 6.12.0、ESP-IDF 5.5.0；`core_dir = .tools/platformio` 沿用現有套件。本機建置記錄為 `.artifacts/build-v1.4.1.log` 與標準版清除 CMake 快取後的 `.artifacts/build-v1.4.1-psram.log`。實板完整更新、斷電及回滾仍需依下列程序驗收；CI 發布狀態見 [GitHub Actions](https://github.com/jonas7414/salary_clock/actions/workflows/release.yml)。

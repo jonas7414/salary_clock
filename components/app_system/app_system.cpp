@@ -49,6 +49,8 @@ void display_publish(uint32_t t,uint32_t d,bool p) {
     device.partial_rendering=p; xSemaphoreGive(mutex);
 }
 void time_wait_publish(bool e) { xSemaphoreTake(mutex,portMAX_DELAY); device.sntp_wait_expired=e; xSemaphoreGive(mutex); }
+void rtc_publish(const RtcStatus &s) { xSemaphoreTake(mutex,portMAX_DELAY); device.rtc=s; xSemaphoreGive(mutex); }
+void battery_publish(const BatteryStatus &s) { xSemaphoreTake(mutex,portMAX_DELAY); device.battery=s; xSemaphoreGive(mutex); }
 void system_heartbeat(CriticalTask task) {
     const auto now=esp_timer_get_time();
     portENTER_CRITICAL(&health_lock); health.beat(task,now); portEXIT_CRITICAL(&health_lock);

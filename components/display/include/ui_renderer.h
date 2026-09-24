@@ -1,5 +1,6 @@
 #pragma once
 #include "app_types.h"
+#include "battery_status.h"
 #include "coin_physics.h"
 #include <cstddef>
 #include <cstdint>
@@ -8,6 +9,8 @@ struct UiModel {
     AppConfig config{};
     DisplayTheme theme{DisplayTheme::Classic};
     SalaryStatus salary{};
+    RtcStatus rtc{};
+    BatteryStatus battery{};
     SystemState system{SYSTEM_BOOTING};
     unsigned page{};
     char date[16]{"----/--/--"};
@@ -17,7 +20,8 @@ struct UiModel {
     int rssi{};
     uint32_t held_ms{}, free_heap{}, free_psram{}, uptime{}, dropped_frames{}, frame_us{};
     uint32_t animation_ms{};
-    bool synced{}, connected{}, associated{}, sntp_wait_expired{}, partial{};
+    bool synced{}, sntp_synced{}, connected{}, associated{}, sntp_wait_expired{}, partial{};
+    float rtc_progress{1.f};
     float pulse{};
     double gain_money{};
     float gain_progress{1.f};

@@ -198,6 +198,60 @@ static void wifi_tests() {
     CHECK(setup.update(State::Connecting,true,21000000)==WifiAction::None);
     CHECK(setup.update(State::WaitingForIp,true,90000000)==WifiAction::None);
     CHECK(setup.update(State::Online,true,100000000)==WifiAction::None);
+
+    // A valid RTC keeps the clock screen available at boot while Wi-Fi retries.
+    WifiPolicy rtc(true,0);
+    CHECK(rtc.update(State::Disconnected,false,0,true)==WifiAction::Connect);
+    CHECK(rtc.update(State::Connecting,false,0,true)==WifiAction::None);
+    CHECK(rtc.update(State::Connecting,false,20000000,true)==WifiAction::Disconnect);
+    CHECK(rtc.update(State::Disconnected,false,21000000,true)==WifiAction::None);
+    CHECK(rtc.update(State::Disconnected,false,26000000,true)==WifiAction::Connect);
+    CHECK(rtc.update(State::WaitingForIp,false,30000000,true)==WifiAction::None);
+    CHECK(rtc.update(State::WaitingForIp,false,90000000,true)==WifiAction::Disconnect);
+    CHECK(rtc.update(State::Online,false,95000000,true)==WifiAction::None);
+    CHECK(rtc.update(State::Disconnected,true,100000000,true)==WifiAction::None);
+    WifiPolicy unconfigured(false,0);
+    CHECK(unconfigured.update(State::Disconnected,false,0,true)==WifiAction::Setup);
+    WifiPolicy invalid_rtc(true,0);
+    CHECK(invalid_rtc.update(State::Disconnected,false,20000000,false)==WifiAction::Setup);
+}
+static void battery_tests() {
+    using State=BatteryState;
+    BatteryMonitor monitor;
+    CHECK(BatteryStatus{}.state==State::Measuring);
+    CHECK(monitor.update(3850).state==State::Measuring);
+    CHECK(monitor.update(3840).state==State::Measuring);
+    auto battery=monitor.update(3860);
+    CHECK(battery.state==State::BatteryPower && battery.supply_mv==3860);
+    // USB insertion immediately removes the previous battery inference.
+    CHECK(monitor.update(4750).state==State::Measuring);
+    CHECK(monitor.update(4700).state==State::Measuring);
+    CHECK(monitor.update(4730).state==State::ExternalPower);
+    // USB removal likewise requires new stable samples, without averaging rails.
+    CHECK(monitor.update(4050).state==State::Measuring);
+    CHECK(monitor.update(4040).state==State::Measuring);
+    CHECK(monitor.update(4060).state==State::BatteryPower);
+    auto failed=monitor.update(0);
+    CHECK(failed.state==State::Unavailable && failed.supply_mv==0);
+    CHECK(monitor.update(3860).state==State::Measuring);
+    CHECK(monitor.update(3860).state==State::Measuring);
+    CHECK(monitor.update(3860).state==State::BatteryPower);
+    for (const int mv:{4201,4300,4399}) {
+        BatteryMonitor ambiguous;
+        ambiguous.update(mv);ambiguous.update(mv);
+        CHECK(ambiguous.update(mv).state==State::Unknown);
+    }
+    for (const int mv:{-1,2499,5501,65536}) {
+        CHECK(monitor.update(mv).state==State::Unavailable);
+        CHECK(monitor.update(mv).supply_mv==0);
+    }
+    for (const int mv:{2500,4200,4400,5500}) {
+        BatteryMonitor boundary;boundary.update(mv);boundary.update(mv);
+        CHECK(boundary.update(mv).state==(mv<=4200?State::BatteryPower:State::ExternalPower));
+    }
+    for (int i=0;i<20;++i) CHECK(monitor.update(i%2?4100:4600).state==State::Measuring);
+    CHECK(std::strcmp(battery_state_name(State::ExternalPower),"external_power")==0);
+    CHECK(std::strcmp(battery_state_name(State::Unknown),"unknown")==0);
 }
 static void physics_tests() {
     CoinPhysicsEngine p(42);for(unsigned i=0;i<MAX_COINS+7;++i)p.spawn();CHECK(count(p)==MAX_COINS);
@@ -304,7 +358,7 @@ static void ppm(const std::string &path,const std::vector<uint16_t> &frame) {
     for(auto p:frame) { const char rgb[]={char(((p>>11)&31)*255/31),char(((p>>5)&63)*255/63),char((p&31)*255/31)};out.write(rgb,3); }
 }
 static void render_tests(const char *directory) {
-    UiModel m{};m.config=config_defaults();m.system=SYSTEM_RUNNING;m.synced=m.connected=true;
+    UiModel m{};m.config=config_defaults();m.system=SYSTEM_RUNNING;m.synced=m.connected=m.sntp_synced=true;
     m.salary=at(m.config,14,37,21);std::strcpy(m.clock,"14:37:21");std::strcpy(m.ap_ssid,"SalaryThief-A31F");
     std::strcpy(m.date,"2026/09/23");
     std::strcpy(m.ssid,"Office Wi-Fi");std::strcpy(m.ip,"192.168.1.25");std::strcpy(m.idf,"v5.5.0");std::strcpy(m.firmware,APP_FIRMWARE_VERSION);
@@ -467,9 +521,73 @@ static void transition_render_tests(const char *directory) {
         ui_render(strip.data(),0,170,m);CHECK(full==strip);
     }
 }
+static void rtc_render_tests(const char *directory) {
+    UiModel m{};m.config=config_defaults();m.system=SYSTEM_RUNNING;m.synced=true;
+    m.salary=at(m.config,14,37);std::strcpy(m.clock,"14:37:00");std::strcpy(m.date,"2026/09/24");
+    m.rtc.present=m.rtc.valid=true;
+    std::vector<uint16_t> full(320*170),strip(320*170),guard(320*10+2,0x55aa);
+    for (int theme=0;theme<3;++theme) {
+        m.theme=static_cast<DisplayTheme>(theme);m.rtc.operation=RtcOperation::None;
+        ui_render(full.data(),0,170,m);const auto baseline=full;
+        ppm(std::string(directory)+"/rtc_mode_"+std::to_string(theme)+".ppm",full);
+        m.connected=true;ui_render(strip.data(),0,170,m);CHECK(full==strip);m.connected=false;
+        m.rtc.present=false;ui_render(strip.data(),0,170,m);CHECK(full!=strip);m.rtc.present=true;
+        for (int action=0;action<3;++action) {
+            m.rtc.operation=action==0?RtcOperation::Read:RtcOperation::Write;
+            m.rtc.result=action==2?RtcResult::Failed:RtcResult::Success;
+            bool moved=false;std::vector<uint16_t> previous=baseline;
+            for (int i=0;i<=80;++i) {
+                m.animation_ms=i*40;m.rtc_progress=float(i)/80;
+                ui_render(full.data(),0,170,m);
+                for (int y=0;y<170;y+=10) {
+                    ui_render(guard.data()+1,y,10,m);CHECK(guard.front()==0x55aa && guard.back()==0x55aa);
+                    std::copy(guard.begin()+1,guard.end()-1,strip.begin()+y*320);
+                }
+                CHECK(full==strip);moved|=full!=previous;previous=full;
+                for (int y=0;y<170;++y) for (int x=0;x<320;++x)
+                    if (y<31 || y>=145 || x<8 || x>=312) CHECK(full[y*320+x]==baseline[y*320+x]);
+                ppm(std::string(directory)+"/rtc_"+std::to_string(action)+"_"+std::to_string(theme)+"_"+std::to_string(i)+".ppm",full);
+            }
+            CHECK(moved && full==baseline);
+        }
+    }
+    // Preserve setup/error/button prompts; show RTC activity on a time-wait screen.
+    for (int mode=0;mode<4;++mode) {
+        m.system=mode==0?SYSTEM_SETUP_MODE:mode==1?SYSTEM_ERROR:SYSTEM_RUNNING;
+        m.held_ms=mode==2?700:0;m.synced=mode!=3;m.rtc_progress=.4f;
+        m.rtc.operation=RtcOperation::None;ui_render(full.data(),0,170,m);
+        m.rtc.operation=RtcOperation::Write;ui_render(strip.data(),0,170,m);
+        CHECK((full==strip)==(mode!=3));
+    }
+}
+static void battery_render_tests(const char *directory) {
+    UiModel m{};m.config=config_defaults();m.system=SYSTEM_RUNNING;m.page=3;
+    m.synced=m.sntp_synced=m.connected=true;m.rtc.present=true;
+    m.salary=at(m.config,14,37);std::strcpy(m.date,"2026/09/24");std::strcpy(m.clock,"14:37:00");
+    std::strcpy(m.ssid,"Office Wi-Fi");std::strcpy(m.ip,"192.168.1.25");std::strcpy(m.idf,"v5.5.0");std::strcpy(m.firmware,APP_FIRMWARE_VERSION);
+    m.rssi=-53;m.free_heap=110000;m.free_psram=7300000;m.uptime=2451;
+    const BatteryStatus cases[]={{BatteryState::BatteryPower,3850},{BatteryState::ExternalPower,4750},
+        {BatteryState::Unknown,4310},{BatteryState::Unavailable,0},{BatteryState::Measuring,0}};
+    std::vector<uint16_t> full(320*170),strip(320*170),guard(320*10+2,0x55aa);
+    for (int theme=0;theme<3;++theme) {
+        m.theme=static_cast<DisplayTheme>(theme);m.battery={};ui_render(full.data(),0,170,m);const auto baseline=full;
+        for (int state=0;state<5;++state) {
+            m.battery=cases[state];ui_render(full.data(),0,170,m);
+            for (int y=0;y<170;y+=10) {
+                ui_render(guard.data()+1,y,10,m);CHECK(guard.front()==0x55aa && guard.back()==0x55aa);
+                std::copy(guard.begin()+1,guard.end()-1,strip.begin()+y*320);
+            }
+            CHECK(full==strip);
+            CHECK(std::equal(full.begin(),full.begin()+132*320,baseline.begin()));
+            CHECK(std::equal(full.begin()+146*320,full.end(),baseline.begin()+146*320));
+            CHECK((full==baseline)==(state==4));
+            ppm(std::string(directory)+"/battery_"+std::to_string(theme)+"_"+std::to_string(state)+".ppm",full);
+        }
+    }
+}
 int main(int argc,char **argv) {
     if(argc!=3)return 2;
-    config_tests();salary_tests(argv[1]);button_tests();wifi_tests();physics_tests();money_gain_tests();transition_tests();
-    render_tests(argv[2]);transition_render_tests(argv[2]);
-    std::printf("PASS: %u checks (salary, Gregorian calendar, configuration, button, Wi-Fi policy, physics, animation, rendering)\n",checks);
+    config_tests();salary_tests(argv[1]);button_tests();wifi_tests();battery_tests();physics_tests();money_gain_tests();transition_tests();
+    render_tests(argv[2]);transition_render_tests(argv[2]);rtc_render_tests(argv[2]);battery_render_tests(argv[2]);
+    std::printf("PASS: %u checks (salary, Gregorian calendar, configuration, button, Wi-Fi policy, battery status, physics, animation, rendering)\n",checks);
 }

@@ -4,8 +4,10 @@
 esp_err_t app_config_init(bool *configured);
 AppConfig app_config_snapshot();
 DisplayTheme app_config_theme();
+DisplaySchedule app_config_display_schedule();
 esp_err_t app_config_save(const AppConfig &config);
 esp_err_t app_config_save(const AppConfig &config,DisplayTheme theme);
+esp_err_t app_config_save(const AppConfig &config,DisplayTheme theme,const DisplaySchedule &schedule);
 esp_err_t app_config_reset();
 
 // Serialize flash configuration writes with OTA. Snapshots remain available.

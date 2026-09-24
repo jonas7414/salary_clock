@@ -5,6 +5,7 @@ from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]
 CONFIG=dict(config_version=1,wifi_ssid='',has_password=False,monthly_salary=40000,work_days=31,work_start='09:00',lunch_start='12:00',lunch_end='13:00',work_end='18:00',timezone='Asia/Taipei',display_theme=0)
+CONFIG.update(display_on='08:00',display_off='19:00')
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self,*args):pass

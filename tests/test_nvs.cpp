@@ -6,16 +6,17 @@
 #include <cstring>
 #include <vector>
 static std::vector<unsigned char> committed,pending,committed_theme,pending_theme;
+static std::vector<unsigned char> committed_schedule,pending_schedule;
 static bool fail_commit=false;static int flash_error=0;
 static unsigned checks=0;
 #define CHECK(x) do{++checks;if(!(x)){std::fprintf(stderr,"NVS FAIL %d: %s\n",__LINE__,#x);std::exit(1);}}while(0)
 esp_err_t nvs_flash_init(){int err=flash_error;flash_error=0;return err;}
-esp_err_t nvs_flash_erase(){committed.clear();pending.clear();committed_theme.clear();pending_theme.clear();return ESP_OK;}
+esp_err_t nvs_flash_erase(){committed.clear();pending.clear();committed_theme.clear();pending_theme.clear();committed_schedule.clear();pending_schedule.clear();return ESP_OK;}
 esp_err_t nvs_open(const char *,int mode,nvs_handle_t *h){*h=1;return mode==NVS_READONLY&&committed.empty()?ESP_ERR_NVS_NOT_FOUND:ESP_OK;}
-esp_err_t nvs_get_blob(nvs_handle_t,const char *key,void *out,size_t *size){const auto &v=std::strcmp(key,"theme")==0?committed_theme:committed;if(v.empty())return ESP_ERR_NVS_NOT_FOUND;if(*size<v.size())return ESP_FAIL;*size=v.size();std::memcpy(out,v.data(),*size);return ESP_OK;}
-esp_err_t nvs_set_blob(nvs_handle_t,const char *key,const void *data,size_t size){auto p=static_cast<const unsigned char*>(data);auto &v=std::strcmp(key,"theme")==0?pending_theme:pending;v.assign(p,p+size);return ESP_OK;}
-esp_err_t nvs_commit(nvs_handle_t){if(fail_commit)return ESP_FAIL;committed=pending;committed_theme=pending_theme;return ESP_OK;}
-esp_err_t nvs_erase_all(nvs_handle_t){pending.clear();pending_theme.clear();return ESP_OK;}
+esp_err_t nvs_get_blob(nvs_handle_t,const char *key,void *out,size_t *size){const auto &v=std::strcmp(key,"theme")==0?committed_theme:std::strcmp(key,"display_hours")==0?committed_schedule:committed;if(v.empty())return ESP_ERR_NVS_NOT_FOUND;if(*size<v.size())return ESP_FAIL;*size=v.size();std::memcpy(out,v.data(),*size);return ESP_OK;}
+esp_err_t nvs_set_blob(nvs_handle_t,const char *key,const void *data,size_t size){auto p=static_cast<const unsigned char*>(data);auto &v=std::strcmp(key,"theme")==0?pending_theme:std::strcmp(key,"display_hours")==0?pending_schedule:pending;v.assign(p,p+size);return ESP_OK;}
+esp_err_t nvs_commit(nvs_handle_t){if(fail_commit)return ESP_FAIL;committed=pending;committed_theme=pending_theme;committed_schedule=pending_schedule;return ESP_OK;}
+esp_err_t nvs_erase_all(nvs_handle_t){pending.clear();pending_theme.clear();pending_schedule.clear();return ESP_OK;}
 void nvs_close(nvs_handle_t){}
 int main(){
     bool loaded=true;CHECK(app_config_init(&loaded)==ESP_OK&&!loaded);
@@ -67,5 +68,38 @@ int main(){
     }
     CHECK(app_config_reset()==ESP_OK);CHECK(committed_theme.empty());
     CHECK(app_config_init(&loaded)==ESP_OK&&!loaded);CHECK(app_config_theme()==DisplayTheme::Classic);
+    // Old firmware leaves the display schedule absent; loading it never rewrites NVS.
+    committed=good;committed_theme.clear();committed_schedule.clear();
+    CHECK(app_config_init(&loaded)==ESP_OK&&loaded);
+    CHECK(app_config_display_schedule().on_minute==480 && app_config_display_schedule().off_minute==1140);
+    CHECK(committed==good && committed_schedule.empty());
+    CHECK(app_config_save(c,DisplayTheme::Amber,{22*60,7*60+30})==ESP_OK);
+    CHECK(committed==good); // The v1 config record still has exactly the same layout and CRC.
+    CHECK(app_config_display_schedule().on_minute==480); // Applied on reboot.
+    CHECK(app_config_init(&loaded)==ESP_OK&&loaded);
+    CHECK(app_config_display_schedule().on_minute==1320 && app_config_display_schedule().off_minute==450);
+    CHECK(app_config_theme()==DisplayTheme::Amber);
+    CHECK(app_config_save(c)==ESP_OK);CHECK(app_config_init(&loaded)==ESP_OK&&loaded);
+    CHECK(app_config_display_schedule().on_minute==1320);
+    CHECK(app_config_save(c,DisplayTheme::Handheld)==ESP_OK);CHECK(app_config_init(&loaded)==ESP_OK&&loaded);
+    CHECK(app_config_display_schedule().off_minute==450);
+    fail_commit=true;CHECK(app_config_save(c,DisplayTheme::Classic,{600,1200})==ESP_FAIL);fail_commit=false;
+    CHECK(app_config_init(&loaded)==ESP_OK&&loaded);
+    CHECK(app_config_display_schedule().on_minute==1320 && app_config_theme()==DisplayTheme::Handheld);
+    CHECK(app_config_save(c,DisplayTheme::Classic,{1440,1200})==ESP_ERR_INVALID_ARG);
+    CHECK(app_config_save(c,DisplayTheme::Classic,{600,1440})==ESP_ERR_INVALID_ARG);
+    CHECK(app_config_begin_ota());
+    CHECK(app_config_save(c,DisplayTheme::Classic,{600,1200})==ESP_ERR_INVALID_STATE);app_config_end_ota();
+    for (const auto &bytes:{std::vector<unsigned char>{0xff,0xff,0,0},std::vector<unsigned char>{1},
+                           std::vector<unsigned char>{0,0,0,0,0}}) {
+        committed_schedule=bytes;CHECK(app_config_init(&loaded)==ESP_OK&&loaded);
+        CHECK(app_config_display_schedule().on_minute==480 && app_config_display_schedule().off_minute==1140);
+        CHECK(committed==good && committed_schedule==bytes);
+    }
+    CHECK(app_config_save(c,DisplayTheme::Classic,{0,0})==ESP_OK);CHECK(app_config_init(&loaded)==ESP_OK&&loaded);
+    CHECK(app_config_display_schedule().on_minute==0 && app_config_display_schedule().off_minute==0);
+    CHECK(app_config_reset()==ESP_OK);CHECK(committed_schedule.empty());
+    CHECK(app_config_init(&loaded)==ESP_OK&&!loaded);
+    CHECK(app_config_display_schedule().on_minute==480 && app_config_display_schedule().off_minute==1140);
     std::printf("PASS: %u NVS checks (first boot, persistence, corruption, version mismatch, commit failure, reset, preserved errors, OTA write exclusion)\n",checks);
 }

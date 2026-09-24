@@ -1,4 +1,5 @@
 #include "display.h"
+#include "display_schedule.h"
 #include "ui_renderer.h"
 #include "ui_animation.h"
 #include "panel_init_sequence.h"
@@ -100,8 +101,23 @@ esp_err_t flush(const UiModel &model) {
         strip_hashes[band]=current;
     }
     if (back) std::swap(front,back);
-    if (first_frame) { first_frame=false; gpio_set_level(GPIO_NUM_38,1); }
+    first_frame=false;
     return ESP_OK;
+}
+esp_err_t update_screen(const UiModel &model,bool visible,bool &panel_on) {
+    if (!visible) {
+        if (!panel_on) return ESP_OK;
+        gpio_set_level(GPIO_NUM_38,0);
+        const auto err=esp_lcd_panel_disp_on_off(panel,false);
+        if (err==ESP_OK) panel_on=false;
+        return err;
+    }
+    // Refresh every strip before lighting the backlight, in both buffer modes.
+    if (!panel_on) first_frame=true;
+    auto err=flush(model);
+    if (err==ESP_OK && !panel_on) err=esp_lcd_panel_disp_on_off(panel,true);
+    if (err==ESP_OK) { panel_on=true; gpio_set_level(GPIO_NUM_38,1); }
+    return err;
 }
 void task(void *) {
     if (panel_init()!=ESP_OK) {
@@ -111,6 +127,10 @@ void task(void *) {
     UiAnimation animation(esp_random());
     UiModel model{}; model.config=app_config_snapshot(); model.physics=&animation.physics();
     model.theme=app_config_theme();
+    const auto schedule=app_config_display_schedule();
+    DisplaySchedulePolicy display_policy;
+    bool panel_on=true;
+    uint32_t last_button_presses=0;
     std::snprintf(model.idf,sizeof(model.idf),"%s",esp_get_idf_version());
     std::snprintf(model.firmware,sizeof(model.firmware),"%s",APP_FIRMWARE_VERSION);
     TickType_t wake=xTaskGetTickCount(); int64_t last_us=esp_timer_get_time();
@@ -137,8 +157,10 @@ void task(void *) {
         model.frame_us=device.frame_us; model.dropped_frames=dropped;
         uint8_t page;
         while (xQueueReceive(page_events(),&page,0)==pdTRUE) model.page=(model.page+1)%4;
+        uint16_t minute=0;
         if (model.synced) {
             time_t now=time(nullptr); tm local{}; localtime_r(&now,&local);
+            minute=local.tm_hour*60+local.tm_min;
             std::strftime(model.date,sizeof(model.date),"%Y/%m/%d",&local);
             std::strftime(model.clock,sizeof(model.clock),"%H:%M:%S",&local);
         }
@@ -148,7 +170,11 @@ void task(void *) {
         model.gain_progress=animation.gain_progress();
         model.transition_state=animation.transition_state();
         model.transition_progress=animation.transition_progress();
-        const auto err=flush(model);
+        const bool pressed=device.button_presses!=last_button_presses;
+        last_button_presses=device.button_presses;
+        const bool force_on=(bits&(SETUP_MODE_BIT|SYSTEM_ERROR_BIT)) || !(bits&CONFIG_READY_BIT);
+        const bool visible=display_policy.update(schedule,minute,model.synced,force_on,pressed,model.animation_ms);
+        const auto err=update_screen(model,visible,panel_on);
         if (err!=ESP_OK) {
             ESP_LOGE("display","LCD transfer failed: %s",esp_err_to_name(err));
             xEventGroupSetBits(system_events(),SYSTEM_ERROR_BIT);

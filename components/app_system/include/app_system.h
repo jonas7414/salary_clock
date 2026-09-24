@@ -27,6 +27,7 @@ struct DeviceStatus {
     RtcStatus rtc{};
     BatteryStatus battery{};
     uint32_t button_held_ms{};
+    uint32_t button_presses{};
     uint32_t frame_us{};
     uint32_t dropped_frames{};
     bool partial_rendering{};
@@ -43,7 +44,7 @@ void salary_publish(const SalaryStatus &status);
 SalaryStatus salary_snapshot();
 DeviceStatus device_snapshot();
 void network_publish(const NetworkStatus &status);
-void button_publish(uint32_t held_ms);
+void button_publish(uint32_t held_ms,uint32_t presses);
 void display_publish(uint32_t frame_us, uint32_t dropped, bool partial);
 void time_wait_publish(bool expired);
 void rtc_publish(const RtcStatus &status);

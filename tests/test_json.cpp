@@ -45,5 +45,26 @@ int main(){
         CHECK(theme==DisplayTheme::Handheld);
     }
     CHECK(!parse_theme(replace(body,"\"config_version\":1","\"display_theme\":1,\"display_theme\":2,\"config_version\":1")));
+    DisplaySchedule schedule{};
+    auto parse_schedule=[&](const std::string &s){return config_parse_json(s.data(),s.size(),current,result,&reason,&theme,&schedule);};
+    auto with_times=[&](const std::string &on,const std::string &off){
+        return replace(body,"\"config_version\":1","\"display_on\":"+on+",\"display_off\":"+off+",\"config_version\":1");
+    };
+    CHECK(parse_schedule(body));CHECK(schedule.on_minute==480 && schedule.off_minute==1140);
+    CHECK(parse_schedule(with_times("\"22:00\"","\"07:30\"")));
+    CHECK(schedule.on_minute==1320 && schedule.off_minute==450);
+    CHECK(parse_schedule(body));CHECK(schedule.on_minute==1320 && schedule.off_minute==450); // Old clients preserve it.
+    CHECK(parse_schedule(replace(body,"\"config_version\":1","\"display_on\":\"23:59\",\"config_version\":1")));
+    CHECK(schedule.on_minute==1439 && schedule.off_minute==450);
+    CHECK(parse_schedule(with_times("\"00:00\"","\"00:00\"")));
+    CHECK(schedule.on_minute==0 && schedule.off_minute==0);
+    for (const auto value:{"\"24:00\"","\"08:60\"","\"8:00\"","\"-1:00\"","\"08:00:00\"","480","null","true","\"\""}) {
+        CHECK(!parse_schedule(with_times(value,"\"19:00\"")));
+        CHECK(!parse_schedule(with_times("\"08:00\"",value)));
+        CHECK(schedule.on_minute==0 && schedule.off_minute==0);
+    }
+    CHECK(!parse_schedule(replace(body,"\"config_version\":1","\"display_on\":\"08:00\",\"display_on\":\"09:00\",\"config_version\":1")));
+    CHECK(!parse_schedule(replace(with_times("\"08:00\"","\"19:00\""),"Office","")));
+    CHECK(schedule.on_minute==0 && schedule.off_minute==0); // No mutation on other validation errors.
     std::printf("PASS: %u JSON/API settings checks (types, ranges, schedules, duplicates, version, credentials, oversized bodies)\n",checks);
 }

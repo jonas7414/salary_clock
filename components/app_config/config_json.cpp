@@ -23,7 +23,7 @@ bool get_time(cJSON *j,const char *key,uint16_t &minutes) {
     minutes=h*60+m; return true;
 }
 }
-bool config_parse_json(const char *body,size_t length,const AppConfig &current,AppConfig &result,const char **reason,DisplayTheme *theme) {
+bool config_parse_json(const char *body,size_t length,const AppConfig &current,AppConfig &result,const char **reason,DisplayTheme *theme,DisplaySchedule *schedule) {
     *reason="Invalid JSON object";
     if (!body || !length || length>2048 || std::memchr(body,0,length)) return false;
     // This API is a flat object. Reject nested containers before cJSON recursion can
@@ -57,6 +57,12 @@ bool config_parse_json(const char *body,size_t length,const AppConfig &current,A
         get_time(j,"work_start",c.work_start) && get_time(j,"lunch_start",c.lunch_start) &&
         get_time(j,"lunch_end",c.lunch_end) && get_time(j,"work_end",c.work_end);
     c.work_days=mask;
+    auto display_hours=schedule?*schedule:DisplaySchedule{};
+    if ((cJSON_HasObjectItem(j,"display_on") && !get_time(j,"display_on",display_hours.on_minute)) ||
+        (cJSON_HasObjectItem(j,"display_off") && !get_time(j,"display_off",display_hours.off_minute)) ||
+        !display_schedule_valid(display_hours)) {
+        cJSON_Delete(j); *reason="Invalid display schedule; use HH:MM (00:00..23:59)"; return false;
+    }
     uint32_t theme_value=theme?static_cast<uint32_t>(*theme):0;
     if (cJSON_HasObjectItem(j,"display_theme")) {
         if (!number(j,"display_theme",theme_value,2)) {
@@ -69,5 +75,6 @@ bool config_parse_json(const char *body,size_t length,const AppConfig &current,A
     if (!valid) { *reason="Missing or invalid settings; supply password when changing SSID"; return false; }
     if (!config_validate(c,true,reason)) return false;
     result=c; if (theme) *theme=static_cast<DisplayTheme>(theme_value);
+    if (schedule) *schedule=display_hours;
     *reason=nullptr; return true;
 }

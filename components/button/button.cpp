@@ -9,11 +9,14 @@ namespace {
 void task(void *) {
     ButtonLogic buttons[2]; const gpio_num_t pins[]={GPIO_NUM_0,GPIO_NUM_14};
     TickType_t wake=xTaskGetTickCount();
+    uint32_t presses=0;
     while (true) {
         const uint32_t now=uint32_t(esp_timer_get_time()/1000);
         uint32_t held=0;
         for (int i=0;i<2;++i) {
+            const bool was_pressed=buttons[i].pressed();
             const auto action=buttons[i].update(gpio_get_level(pins[i])==0,now);
+            if (!was_pressed && buttons[i].pressed()) ++presses;
             const auto h=buttons[i].held_ms(now); if (h>held) held=h;
             if (action==ButtonAction::Page) { const uint8_t page=1; xQueueSend(page_events(),&page,0); }
             else if (action==ButtonAction::Setup || action==ButtonAction::Reset) {
@@ -22,7 +25,7 @@ void task(void *) {
                     ESP_LOGW("button","Command queue full");
             }
         }
-        button_publish(held);
+        button_publish(held,presses);
         system_heartbeat(CriticalTask::Button);
         vTaskDelayUntil(&wake,pdMS_TO_TICKS(10));
     }

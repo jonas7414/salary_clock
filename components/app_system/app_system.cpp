@@ -43,7 +43,9 @@ void salary_publish(const SalaryStatus &s) { xQueueOverwrite(salary,&s); }
 SalaryStatus salary_snapshot() { SalaryStatus s{}; xQueuePeek(salary,&s,0); return s; }
 DeviceStatus device_snapshot() { xSemaphoreTake(mutex,portMAX_DELAY); const auto d = device; xSemaphoreGive(mutex); return d; }
 void network_publish(const NetworkStatus &n) { xSemaphoreTake(mutex,portMAX_DELAY); device.network=n; xSemaphoreGive(mutex); }
-void button_publish(uint32_t t) { xSemaphoreTake(mutex,portMAX_DELAY); device.button_held_ms=t; xSemaphoreGive(mutex); }
+void button_publish(uint32_t t,uint32_t presses) {
+    xSemaphoreTake(mutex,portMAX_DELAY); device.button_held_ms=t; device.button_presses=presses; xSemaphoreGive(mutex);
+}
 void display_publish(uint32_t t,uint32_t d,bool p) {
     xSemaphoreTake(mutex,portMAX_DELAY); device.frame_us=t; device.dropped_frames=d;
     device.partial_rendering=p; xSemaphoreGive(mutex);

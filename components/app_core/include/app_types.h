@@ -6,6 +6,13 @@ constexpr uint32_t CONFIG_VERSION = 1;
 // Stored separately from AppConfig so older firmware can still read its NVS blob.
 enum class DisplayTheme : uint8_t { Classic=0, Amber=1, Handheld=2 };
 constexpr bool display_theme_valid(uint32_t value) { return value<=2; }
+// Separate NVS key, preserving the original AppConfig blob for OTA rollback.
+struct DisplaySchedule {
+    uint16_t on_minute{8*60}, off_minute{19*60};
+};
+constexpr bool display_schedule_valid(const DisplaySchedule &s) {
+    return s.on_minute<1440 && s.off_minute<1440;
+}
 enum SystemState { SYSTEM_BOOTING, SYSTEM_SETUP_MODE, SYSTEM_CONNECTING_WIFI,
                    SYSTEM_SYNCING_TIME, SYSTEM_RUNNING, SYSTEM_ERROR };
 enum WorkState { WORK_STATE_NO_TIME, WORK_STATE_DAY_OFF, WORK_STATE_BEFORE_WORK,

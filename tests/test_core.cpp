@@ -1,5 +1,6 @@
 #include "app_types.h"
 #include "button_logic.h"
+#include "display_schedule.h"
 #include "wifi_policy.h"
 #include "coin_physics.h"
 #include "ui_renderer.h"
@@ -35,6 +36,50 @@ static void config_tests() {
     std::memset(c.wifi_password,'a',64);c.wifi_password[64]=0;CHECK(config_validate(c,false));
     c.wifi_password[3]='z';CHECK(!config_validate(c,false));
     CHECK(std::strcmp(timezone_posix("Asia/Taipei"),"CST-8")==0);
+}
+static void display_schedule_tests() {
+    const DisplaySchedule schedule{};
+    CHECK(schedule.on_minute==480 && schedule.off_minute==1140);
+    CHECK(display_schedule_valid(schedule));
+    CHECK(!display_schedule_valid({1440,1140}));
+    CHECK(!display_schedule_valid({480,65535}));
+    for (uint16_t minute=0;minute<1440;++minute) {
+        CHECK(display_scheduled_on(schedule,minute)==(minute>=480 && minute<1140));
+        CHECK(display_scheduled_on({19*60,8*60},minute)==(minute>=1140 || minute<480));
+        CHECK(display_scheduled_on({480,480},minute));
+        CHECK(display_scheduled_on({0,1},minute)==(minute==0));
+    }
+    DisplaySchedulePolicy policy;
+    CHECK(!policy.update(schedule,1140,true,false,false,0)); // Off exactly at 19:00.
+    CHECK(policy.update(schedule,1140,true,false,true,50));
+    CHECK(policy.update(schedule,1144,true,false,false,300049));
+    CHECK(!policy.update(schedule,1145,true,false,false,300050));
+    CHECK(policy.update(schedule,1439,true,false,true,400000));
+    CHECK(policy.update(schedule,0,true,false,false,500000)); // Midnight does not reset the timer.
+    CHECK(policy.update(schedule,1,true,false,true,600000)); // Another press extends it.
+    CHECK(policy.update(schedule,4,true,false,false,899999));
+    CHECK(!policy.update(schedule,5,true,false,false,900000));
+    CHECK(policy.update(schedule,479,true,false,true,1000000));
+    CHECK(policy.update(schedule,480,true,false,false,1001000)); // Daily on time wins.
+    CHECK(!policy.update(schedule,1140,true,false,false,1002000)); // Clock jumps to night.
+    CHECK(policy.update(schedule,1140,false,false,false,1100000)); // No usable clock.
+    CHECK(!policy.update(schedule,1140,true,false,false,1100040));
+    CHECK(policy.update(schedule,1140,true,true,false,1200000)); // Setup/error/first boot.
+    CHECK(!policy.update(schedule,1140,true,false,false,1200040));
+    CHECK(policy.update(schedule,600,true,false,true,1300000)); // Daytime presses grant no extension.
+    CHECK(!policy.update(schedule,1140,true,false,false,1300040));
+    CHECK(policy.update(schedule,1140,true,false,true,UINT32_MAX-999));
+    CHECK(policy.update(schedule,1144,true,false,false,298999)); // Millisecond counter rollover.
+    CHECK(!policy.update(schedule,1145,true,false,false,299000));
+
+    // Wake on the debounced press edge, before release, without repeating on hold.
+    ButtonLogic button;
+    CHECK(!button.pressed());
+    CHECK(button.update(true,0)==ButtonAction::None && !button.pressed());
+    CHECK(button.update(true,29)==ButtonAction::None && !button.pressed());
+    CHECK(button.update(true,30)==ButtonAction::None && button.pressed());
+    CHECK(button.update(false,40)==ButtonAction::None && button.pressed());
+    CHECK(button.update(false,70)==ButtonAction::Page && !button.pressed());
 }
 static void salary_tests(const char *oracle) {
     auto c=config_defaults();CHECK(hm_to_seconds(9,30)==34200);
@@ -587,7 +632,7 @@ static void battery_render_tests(const char *directory) {
 }
 int main(int argc,char **argv) {
     if(argc!=3)return 2;
-    config_tests();salary_tests(argv[1]);button_tests();wifi_tests();battery_tests();physics_tests();money_gain_tests();transition_tests();
+    config_tests();display_schedule_tests();salary_tests(argv[1]);button_tests();wifi_tests();battery_tests();physics_tests();money_gain_tests();transition_tests();
     render_tests(argv[2]);transition_render_tests(argv[2]);rtc_render_tests(argv[2]);battery_render_tests(argv[2]);
     std::printf("PASS: %u checks (salary, Gregorian calendar, configuration, button, Wi-Fi policy, battery status, physics, animation, rendering)\n",checks);
 }

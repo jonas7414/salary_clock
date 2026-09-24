@@ -164,7 +164,8 @@ void duration(char *buffer,size_t capacity,uint32_t seconds) {
 }
 const char *work_label(WorkState state) {
     switch(state) {
-        case WORK_STATE_DAY_OFF:return "今天不用偷";
+        case WORK_STATE_DAY_OFF:return "放假啦~";
+        case WORK_STATE_NO_CALENDAR:return "行事曆待更新";
         case WORK_STATE_BEFORE_WORK:return "還沒開偷";
         case WORK_STATE_WORKING_MORNING:case WORK_STATE_WORKING_AFTERNOON:return "正在偷薪水";
         case WORK_STATE_LUNCH:return "午休中，等等繼續偷";
@@ -227,6 +228,31 @@ void lunch_scene(Canvas &c,uint32_t milliseconds) {
     for (const auto &seed:seeds) c.ellipse(float(seed[0]+sway),float(seed[1]+bob),2,1,sesame);
     c.ellipse(247+sway,79.f+bob,2,2,patty);c.ellipse(260+sway,79.f+bob,2,2,patty);
     c.rect(252+sway,82+bob,4,1,patty);
+}
+void holiday_scene(Canvas &c,uint32_t milliseconds) {
+    const float phase=float(milliseconds%4000)/4000.f;
+    const int sway=int(std::lround(std::sin(phase*6.2831853f)*3.f));
+    c.ellipse(289,52,9,9,GOLD);
+    for (int i=0;i<8;++i) {
+        const float angle=i*.7853982f+phase*.4f;
+        c.rect(288+int(std::cos(angle)*14),51+int(std::sin(angle)*14),2,2,GOLD);
+    }
+    c.ellipse(226+sway,57,14,5,INK);c.ellipse(222+sway,53,7,7,INK);
+    c.ellipse(230+sway,52,8,8,INK);
+    const auto sand=rgb(224,184,111),sea=rgb(82,171,180),cloth=rgb(244,145,106);
+    c.ellipse(258,130,48,8,sand);
+    for (int x=210;x<311;x+=12) c.ellipse(float(x),137+std::sin(phase*6.2831853f+x*.12f)*2,8,2,sea);
+    c.rect(263,85,3,43,MUTED);
+    // A gently swaying parasol and deck chair make holidays distinct from sleep.
+    for (int row=0;row<23;++row) {
+        const int half=int(std::sqrt(std::max(0.f,1.f-std::pow((22-row)/23.f,2.f)))*32);
+        c.rect(264+sway-half,70+row,half*2+1,1,row<9?INK:GOLD);
+    }
+    for (int i=0;i<19;++i) c.rect(226+i/2,99+i,5,2,i%6<3?cloth:INK);
+    c.rect(234,117,24,4,cloth);
+    for (int i=0;i<9;++i) {
+        c.rect(235-i/2,120+i,2,1,MUTED);c.rect(254+i/2,120+i,2,1,MUTED);
+    }
 }
 void rest_scene(Canvas &c,uint32_t milliseconds) {
     const float phase=float(milliseconds%4000)/4000.f;
@@ -320,6 +346,7 @@ void schedule_transition(Canvas &c,const UiModel &m) {
     if (m.transition_progress>=1.f || m.held_ms>=500) return;
     const char *message;
     switch (m.transition_state) {
+        case WORK_STATE_DAY_OFF:message="放假啦~";break;
         case WORK_STATE_WORKING_MORNING:message="開始上班~";break;
         case WORK_STATE_LUNCH:message="午餐時間!!!";break;
         case WORK_STATE_WORKING_AFTERNOON:message="繼續上班~~";break;
@@ -346,7 +373,8 @@ void schedule_transition(Canvas &c,const UiModel &m) {
         c.rect(160+side*(80+spread)-4,126,8,2,GOLD,opacity);
     }
     c.zoom_text(160,84+bob,message,32,scale,GOLD,opacity);
-    const char *caption=m.transition_state==WORK_STATE_LUNCH?"先吃飽，等等繼續偷":
+    const char *caption=m.transition_state==WORK_STATE_DAY_OFF?"今天不用上班，好好放鬆":
+        m.transition_state==WORK_STATE_LUNCH?"先吃飽，等等繼續偷":
         m.transition_state==WORK_STATE_AFTER_WORK?"今天辛苦了，好好休息":"準備好了，開始偷薪水";
     c.text(160-Canvas::width(caption,12)/2,112,caption,12,INK,280,opacity);
     c.clip();
@@ -370,6 +398,11 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
         c.text(14,112,m.connected ? "Wi-Fi connected / SNTP pending" :
                m.associated ? "Wi-Fi linked / waiting for IP" : "Connecting to Wi-Fi...",12,MUTED);
         c.text(14,141,m.sntp_wait_expired?"同步尚未成功，請檢查網路":"時間同步後開始計算",12,MUTED);
+    } else if (m.salary.work_state==WORK_STATE_NO_CALENDAR) {
+        c.text(14,42,"行事曆待更新",24,GOLD);
+        c.text(14,81,"此年度尚未收錄，暫停薪資計算",16,INK);
+        c.text(14,110,"請更新含該年度行事曆的韌體",12,MUTED);
+        c.text(14,137,"時間仍持續運作",12,MUTED);
     } else {
         if (m.page==0) {
             c.rect(198,34,1,106,LINE);
@@ -384,7 +417,8 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
             } else c.text(12,118,work_label(m.salary.work_state),12,GREEN);
             c.clip(200,29,118,116);
             scene_frame(c,m);
-            if (m.salary.work_state==WORK_STATE_LUNCH) lunch_scene(c,m.animation_ms);
+            if (m.salary.work_state==WORK_STATE_DAY_OFF) holiday_scene(c,m.animation_ms);
+            else if (m.salary.work_state==WORK_STATE_LUNCH) lunch_scene(c,m.animation_ms);
             else if (m.salary.work_state==WORK_STATE_AFTER_WORK) rest_scene(c,m.animation_ms);
             else {
                 // Small scale marks keep the pile within a quiet instrument-like area.
@@ -406,9 +440,11 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
         } else if (m.page==2) {
             c.text(12,35,"本月戰績",16,INK);
             std::snprintf(buf,sizeof(buf),"NT$ %lu",static_cast<unsigned long>(m.config.monthly_salary));
-            c.text(12,61,"月薪",12,MUTED); c.text(12,80,buf,16,GOLD);
+            c.text(12,56,"月薪",12,MUTED); c.text(12,72,buf,16,GOLD);
             std::snprintf(buf,sizeof(buf),"%d / %d",m.salary.work_day_index,m.salary.monthly_work_days);
-            c.text(12,110,"今天 / 本月工作日",12,MUTED); c.text(12,130,buf,16,INK);
+            c.text(12,97,"今天 / 本月工作日",12,MUTED); c.text(12,113,buf,16,INK);
+            std::snprintf(buf,sizeof(buf),"%.2f h",double(m.salary.monthly_work_seconds)/3600);
+            c.text(12,141,"工時",12,MUTED);c.text(48,139,buf,16,GOLD,114);
             c.rect(166,37,1,113,LINE);
             const char *labels[]={"每日","每小時","每分鐘","每秒"};
             const double values[]={m.salary.daily_salary,m.salary.salary_per_second*3600,m.salary.salary_per_second*60,m.salary.salary_per_second};

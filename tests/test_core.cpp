@@ -47,8 +47,12 @@ static void salary_tests(const char *oracle) {
     CHECK(at(c,18,0).progress==1);CHECK(at(c,23,59,59).worked_seconds==28800);
     CHECK(at(c,10,0).remaining_work_seconds==25200);CHECK(at(c,12,30).remaining_work_seconds==18000);
     CHECK(at(c,14,0).remaining_work_seconds==14400);
-    CHECK(at(c,12,0,0,25).work_state==WORK_STATE_LUNCH);CHECK(at(c,12,0,0,26).work_state==WORK_STATE_DAY_OFF);
-    CHECK(at(c,12,0,0,27).remaining_money==0);CHECK(at(c,9,0,0,28).work_state==WORK_STATE_WORKING_MORNING);
+    CHECK(at(c,12,0,0,25).work_state==WORK_STATE_DAY_OFF);CHECK(at(c,12,0,0,26).work_state==WORK_STATE_DAY_OFF);
+    CHECK(at(c,12,0,0,27).remaining_money==0);CHECK(at(c,9,0,0,28).work_state==WORK_STATE_DAY_OFF);
+    CHECK(at(c,12,0).monthly_work_days==20 && at(c,12,0).monthly_work_seconds==160*3600);
+    CHECK(at(c,18,0).daily_salary==2000);
+    const auto removed=calculate_salary(c,local(2025,9,23,18,0,0),0,true);
+    CHECK(removed.work_state==WORK_STATE_NO_CALENDAR && removed.monthly_work_seconds==0);
     for(int sec=0;sec<86400;++sec) {
         const auto s=at(c,sec/3600,sec/60%60,sec%60);
         CHECK(s.worked_seconds+s.remaining_work_seconds==s.daily_work_seconds);
@@ -59,13 +63,30 @@ static void salary_tests(const char *oracle) {
     c.monthly_salary=80000;CHECK(std::abs(at(c,14,37,17).earned_money-reboot.earned_money*2)<1e-9);
     c.work_start=8*60;c.lunch_start=11*60+30;c.lunch_end=12*60+15;c.work_end=16*60+30;
     CHECK(at(c,16,30).daily_work_seconds==27900);CHECK(at(c,11,45).worked_seconds==12600);
-    c.work_days=1<<5;CHECK(at(c,12,0,0,26).work_state==WORK_STATE_LUNCH);CHECK(at(c,12,0,0,23).work_state==WORK_STATE_DAY_OFF);
-    std::ifstream file(oracle);CHECK(file.good());int year,month,mask,expected;unsigned cases=0;
-    while(file>>year>>month>>mask>>expected) { CHECK(calculate_work_days_in_month(year,month,mask)==expected);++cases; }
-    CHECK(cases>20000);
-    CHECK(calculate_work_days_in_month(2024,2,127)==29);CHECK(calculate_work_days_in_month(2100,2,127)==28);
-    CHECK(calculate_work_days_in_month(2000,2,127)==29);CHECK(calculate_work_days_in_month(2026,4,127)==30);
-    CHECK(calculate_work_days_in_month(2026,1,127)==31);CHECK(calculate_work_days_in_month(2026,13,127)==0);
+    CHECK(at(c,16,30).monthly_work_seconds==20*27900);
+    // Legacy weekday selections cannot override a national holiday or makeup day.
+    c.work_days=1<<5;CHECK(at(c,12,0,0,26).work_state==WORK_STATE_DAY_OFF);CHECK(at(c,12,0,0,23).work_state==WORK_STATE_LUNCH);
+    std::ifstream file(oracle);CHECK(file.good());int year,month,day,working,expected,index;unsigned cases=0;
+    double month_total=0;
+    while(file>>year>>month>>day>>working>>expected>>index) {
+        if(day==1)month_total=0;
+        const auto s=calculate_salary(config_defaults(),local(year,month,day,18,0,0),0,true);
+        CHECK(calculate_work_days_in_month(year,month)==expected);
+        CHECK(s.monthly_work_days==expected && s.work_day_index==index);
+        CHECK(s.monthly_work_seconds==uint32_t(expected*28800));
+        CHECK(s.work_state==(working?WORK_STATE_AFTER_WORK:WORK_STATE_DAY_OFF));
+        CHECK(std::abs(s.earned_money-(working?40000.0/expected:0))<1e-8);
+        month_total+=s.earned_money;
+        if(working && index==expected)CHECK(std::abs(month_total-40000)<1e-7);
+        ++cases;
+    }
+    CHECK(cases>=730);
+    CHECK(calculate_work_days_in_month(2026,2)==14);
+    CHECK(calculate_work_days_in_month(2026,13)==-1);
+    CHECK(calculate_salary(c,local(2026,2,29,12,0,0),0,true).work_state==WORK_STATE_NO_TIME);
+    CHECK(calculate_salary(c,local(2028,2,29,12,0,0),0,true).work_state==WORK_STATE_NO_CALENDAR);
+    const auto missing=calculate_salary(c,local(2099,1,1,12,0,0),0,true);
+    CHECK(missing.work_state==WORK_STATE_NO_CALENDAR && missing.monthly_work_seconds==0 && missing.earned_money==0);
     const auto dec=calculate_salary(config_defaults(),local(2026,12,31,18,0,0),0,true);
     const auto jan=calculate_salary(config_defaults(),local(2027,1,1,0,0,0),0,true);
     CHECK(dec.date_key==20261231 && jan.date_key==20270101 && jan.earned_money==0);
@@ -268,6 +289,15 @@ static void transition_tests() {
     animation.update(at(custom,11,30,0,24),1100000,.04f);CHECK(animation.transition_state()==WORK_STATE_NO_TIME);
     animation.update(SalaryStatus{},1200000,.04f);
     animation.update(at(custom,16,30),1300000,.04f);CHECK(animation.transition_state()==WORK_STATE_NO_TIME);
+    UiAnimation holiday;
+    holiday.update(at(config,23,59,59,24),0,.04f);
+    holiday.update(at(config,0,0,0,25),1000000,.04f);CHECK(holiday.transition_state()==WORK_STATE_DAY_OFF);
+    holiday.update(at(config,0,0,4,25),5000000,.04f);CHECK(holiday.transition_state()==WORK_STATE_NO_TIME);
+    holiday.update(at(config,12,0,0,25),6000000,.04f);CHECK(holiday.transition_state()==WORK_STATE_NO_TIME);
+    holiday.update(at(config,0,0,0,26),7000000,.04f);CHECK(holiday.transition_state()==WORK_STATE_DAY_OFF);
+    UiAnimation holiday_boot;holiday_boot.update(at(config,12,0,0,28),0,.04f);
+    CHECK(holiday_boot.transition_state()==WORK_STATE_DAY_OFF);
+    CHECK(holiday_boot.gain_money()==0 && count(holiday_boot.physics())==1);
 }
 static void ppm(const std::string &path,const std::vector<uint16_t> &frame) {
     std::ofstream out(path,std::ios::binary);out<<"P6\n320 170\n255\n";
@@ -322,8 +352,10 @@ static void render_tests(const char *directory) {
     ppm(std::string(directory)+"/stack_settled.ppm",full);
     // Exercise every animation frame through both framebuffer paths, with the
     // salary and clock held still to verify motion uses its own frame timestamp.
-    for (int scene=0;scene<2;++scene) {
-        m.salary=at(m.config,scene?18:12,0);std::strcpy(m.clock,scene?"18:00:00":"12:00:00");
+    for (int scene=0;scene<3;++scene) {
+        m.salary=at(m.config,scene==1?18:12,0,0,scene==2?25:23);
+        std::strcpy(m.clock,scene==1?"18:00:00":"12:00:00");
+        std::strcpy(m.date,scene==2?"2026/09/25":"2026/09/23");
         std::vector<uint16_t> first;
         bool moved=false;
         for (int frame=0;frame<(scene?100:120);++frame) {
@@ -340,7 +372,7 @@ static void render_tests(const char *directory) {
             for (int y=0;y<170;++y) for (int x=0;x<320;++x)
                 if (x<200 || x>=318 || y<29 || y>=145) outside_unchanged&=full[y*320+x]==first[y*320+x];
             CHECK(outside_unchanged);
-            ppm(std::string(directory)+(scene?"/rest_":"/lunch_")+std::to_string(frame)+".ppm",full);
+            ppm(std::string(directory)+(scene==2?"/holiday_":scene==1?"/rest_":"/lunch_")+std::to_string(frame)+".ppm",full);
         }
         CHECK(moved);
         // Hidden coins must never leak into the meal/rest scenes.
@@ -348,6 +380,7 @@ static void render_tests(const char *directory) {
     }
     // Check popup motion, its bounds, theme palette and both rendering paths.
     m.salary=at(m.config,14,37,21);std::strcpy(m.clock,"14:37:21");m.physics=nullptr;
+    std::strcpy(m.date,"2026/09/23");
     for (int theme=0;theme<3;++theme) {
         m.theme=static_cast<DisplayTheme>(theme);m.gain_money=0;
         ui_render(full.data(),0,170,m);const auto baseline=full;
@@ -380,16 +413,17 @@ static void transition_render_tests(const char *directory) {
     UiModel m{};m.config=config_defaults();m.system=SYSTEM_RUNNING;m.synced=true;
     // Offline after synchronization must still show every schedule announcement.
     std::strcpy(m.date,"2026/09/23");
-    const int minutes[]={m.config.work_start,m.config.lunch_start,m.config.lunch_end,m.config.work_end};
+    const int minutes[]={m.config.work_start,m.config.lunch_start,m.config.lunch_end,m.config.work_end,0};
     std::vector<uint16_t> full(320*170),strip(320*170),guard(320*10+2,0x55aa);
-    for (int event=0;event<4;++event) for (int theme=0;theme<3;++theme) {
+    for (int event=0;event<5;++event) for (int theme=0;theme<3;++theme) {
         m.theme=static_cast<DisplayTheme>(theme);m.page=0;m.transition_state=WORK_STATE_NO_TIME;
         const int minute=minutes[event];
-        m.salary=at(m.config,minute/60,minute%60);
+        m.salary=at(m.config,minute/60,minute%60,0,event==4?25:23);
+        std::strcpy(m.date,event==4?"2026/09/25":"2026/09/23");
         std::snprintf(m.clock,sizeof(m.clock),"%02d:%02d:00",minute/60,minute%60);
         ui_render(full.data(),0,170,m);const auto baseline=full;
         UiAnimation animation;
-        animation.update(at(m.config,(minute-1)/60,(minute-1)%60,59),0,.04f);
+        animation.update(event==4?at(m.config,23,59,59,24):at(m.config,(minute-1)/60,(minute-1)%60,59),0,.04f);
         bool moved=false;
         for (int frame=0;frame<85;++frame) {
             animation.update(m.salary,1000000+frame*40000LL,.04f);

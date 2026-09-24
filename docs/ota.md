@@ -1,4 +1,4 @@
-# GitHub Releases OTA（v1.3.0）
+# GitHub Releases OTA（v1.4.0）
 
 ## 實際行為
 
@@ -162,24 +162,24 @@ v1.3.0 的螢幕風格另外存於 `salary_thief/theme`（uint32 blob：0 經典
 
 ```sh
 git add .
-git commit -m "Add boot-time GitHub OTA with rollback"
+git commit -m "Add Taiwan calendar and holiday animations in v1.4.0"
 git push origin main
-git tag v1.3.0
-git push origin v1.3.0
+git tag v1.4.0
+git push origin v1.4.0
 ```
 
-已安裝支援 OTA 的 1.2.x 可重新開機檢查 v1.3.0。下載期間執行的是裝置目前的下載器，1.2.2 起具備逾時重試；若 1.2.0／1.2.1 的舊下載器反覆逾時，需先透過 USB 安裝修正版。若已安裝 1.3.0，看到相同版本會跳過更新；下一次 OTA 測試需發布更高版本。沒有 OTA 的舊版必須先完成 USB 安裝。
+已安裝支援 OTA 的 1.2.x／1.3.0 可重新開機檢查 v1.4.0。下載期間執行的是裝置目前的下載器，1.2.2 起具備逾時重試；若 1.2.0／1.2.1 的舊下載器反覆逾時，需先透過 USB 安裝修正版。若已安裝 1.4.0，看到相同版本會跳過更新；下一次 OTA 測試需發布更高版本。沒有 OTA 的舊版必須先完成 USB 安裝。
 
 Release 必須有 `firmware.bin`、`firmware.sha256`、`firmware-no-psram.bin`、`firmware-no-psram.sha256`。只發布 app binary，bootloader／partition table 不透過此 OTA 改寫。Release notes 不宜過長，以免完整 API JSON 超過 32 KiB。
 
 ## 驗證結果與實板測試計畫
 
-本機雙組態 `pio run` 已成功；C++ host tests 共 1,540,708 檢查（包含 OTA 283 項、NVS 72 項），另有 3 組 Python release guard 測試。Tag 必須與 `version.txt` 一致，不相符的版本會被拒絕。數值與本機產物 SHA 見 [build-results.json](build-results.json)；公開產物以 Release 附帶的 SHA 為準。CI 結果見 [GitHub Actions](https://github.com/jonas7414/salary_clock/actions/workflows/release.yml)。1.2.0 實板紀錄已確認 TLS、版本偵測及部分下載；重試修正、完整更新、斷電與回滾仍需實板驗收。
+本機雙組態 `pio run` 已成功；C++ host tests 共 1,548,636 檢查（包含 OTA 283 項、NVS 72 項），另有 6 組 Python 行事曆測試與 3 組 release guard 測試。Tag 必須與 `version.txt` 一致，不相符的版本會被拒絕。數值與本機產物 SHA 見 [build-results.json](build-results.json)；公開產物以 Release 附帶的 SHA 為準。CI 結果見 [GitHub Actions](https://github.com/jonas7414/salary_clock/actions/workflows/release.yml)。1.2.0 實板紀錄已確認 TLS、版本偵測及部分下載；重試修正、完整更新、斷電與回滾仍需實板驗收。
 
 | 組態 | firmware.bin | OTA slot | 剩餘空間 |
 | --- | ---: | ---: | ---: |
-| PSRAM | 1,244,832 bytes | 4,194,304 bytes | 2,949,472 bytes |
-| 無 PSRAM | 1,234,896 bytes | 4,194,304 bytes | 2,959,408 bytes |
+| PSRAM | 1,284,368 bytes | 4,194,304 bytes | 2,909,936 bytes |
+| 無 PSRAM | 1,274,384 bytes | 4,194,304 bytes | 2,919,920 bytes |
 
 主機測試直接使用 production SemVer、cJSON parser、checksum／URL policy、probation 與串流順序。故障注入涵蓋每個讀取邊界中斷、短讀、過長、write／digest／image／activation 失敗，檢查前序失敗時 activation 未呼叫；這不替代實際 Flash／bootloader 的斷電保證。
 

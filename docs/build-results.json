@@ -1,6 +1,6 @@
 {
   "date": "2026-09-23",
-  "firmware_version": "1.3.0",
+  "firmware_version": "1.4.0",
   "platformio_versions_verified": [
     "6.2.0"
   ],
@@ -8,22 +8,22 @@
   "esp_idf": "5.5.0",
   "display": "320x170 landscape, USB left",
   "hardware_tested": false,
-  "host_checks_passed": 1540708,
+  "host_checks_passed": 1548636,
   "builds": {
     "tdisplay_s3": {
       "status": "SUCCESS",
       "platformio": "6.2.0",
       "psram_enabled": true,
       "static_ram_bytes": 38988,
-      "flash_usage_bytes": 1248171,
+      "flash_usage_bytes": 1283959,
       "artifacts": {
         "firmware.bin": {
-          "bytes": 1248576,
-          "sha256": "fd79f64c2d7f471adfd506b049e073892e6d9cb2741db91f2c1c8a40345d35ed"
+          "bytes": 1284368,
+          "sha256": "e5fa7a1999087eeeceb39a4ae30fb8ab0b581523d970ad91a525de672143cda4"
         },
         "bootloader.bin": {
           "bytes": 22736,
-          "sha256": "4dc814b74eeccdaf81d549318851cecafe9888ba4f3b0303b1fc0b0ebd810e01"
+          "sha256": "c5a2407e90a582892d213ab1ac6ad8f39cf1dd9b33ca3c31803e7257a73fda69"
         },
         "partitions.bin": {
           "bytes": 3072,
@@ -35,7 +35,7 @@
         }
       },
       "ota_partition_bytes": 4194304,
-      "remaining_ota_bytes": 2945728,
+      "remaining_ota_bytes": 2909936,
       "rollback_enabled": true,
       "tls_certificate_bundle_enabled": true
     },
@@ -43,16 +43,16 @@
       "status": "SUCCESS",
       "platformio": "6.2.0",
       "psram_enabled": false,
-      "static_ram_bytes": 37568,
-      "flash_usage_bytes": 1238215,
+      "static_ram_bytes": 37560,
+      "flash_usage_bytes": 1273979,
       "artifacts": {
         "firmware.bin": {
-          "bytes": 1238624,
-          "sha256": "e5af0c3efe885da5304e26beafd1b859a7430280dcea61187f62296fd4ed791e"
+          "bytes": 1274384,
+          "sha256": "610bc02a1ef2d1a069dcd5d70fadb0e73187df4b36198cb2a5f1169b1c502f04"
         },
         "bootloader.bin": {
           "bytes": 22736,
-          "sha256": "28036f32d3c8e24302c747d0f63aed95df64a9abb116c0052c6b5badb18f17a4"
+          "sha256": "7c47ec11f513db0105b4ef63807a9c707eee717c60d878577449d383527156e5"
         },
         "partitions.bin": {
           "bytes": 3072,
@@ -64,12 +64,12 @@
         }
       },
       "ota_partition_bytes": 4194304,
-      "remaining_ota_bytes": 2955680,
+      "remaining_ota_bytes": 2919920,
       "rollback_enabled": true,
       "tls_certificate_bundle_enabled": true
     }
   },
-  "build_log": ".artifacts/build-themes.log",
+  "build_log": ".artifacts/build-v1.4.0.log",
   "release_guard_test_groups": 3,
   "ota_hardware_tested": false,
   "ota_policy": "Check once on every boot after Wi-Fi and time sync, then wait 20s; manual requests supported",
@@ -82,14 +82,19 @@
   },
   "display_theme_checks": {
     "themes": 3,
-    "scenes": 33,
-    "classic_scenes_unchanged": 10,
-    "portal_save_reload": true,
-    "portal_viewport_widths": [
-      320,
-      390,
-      900
-    ],
+    "rendering_host_checks_passed": true,
+    "portal_js_syntax_checked": true,
+    "portal_dom_references_checked": true,
+    "portal_browser_interaction_tested": false,
     "hardware_tested": false
+  },
+  "calendar_test_groups": 6,
+  "calendar_checks": {
+    "first_year": 2026,
+    "last_year": 2027,
+    "days_checked": 730,
+    "snapshot_header_consistent": true,
+    "september_2026_default_workdays": 20,
+    "september_2026_default_hours": 160
   }
 }

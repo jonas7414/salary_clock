@@ -16,7 +16,10 @@ void task(void *) {
         system_heartbeat(CriticalTask::Salary);
         if (status.date_key && status.date_key != last_date) {
             last_date=status.date_key;
-            ESP_LOGI("salary","Work days: %d; daily salary: %.2f",status.monthly_work_days,status.daily_salary);
+            if (status.work_state==WORK_STATE_NO_CALENDAR)
+                ESP_LOGW("salary","Government calendar unavailable for %04d-%02d; update firmware",local.tm_year+1900,local.tm_mon+1);
+            else ESP_LOGI("salary","Taiwan calendar: %d work days, %.2f hours; daily salary: %.2f",
+                status.monthly_work_days,double(status.monthly_work_seconds)/3600,status.daily_salary);
         }
         vTaskDelayUntil(&wake,pdMS_TO_TICKS(1000));
     }

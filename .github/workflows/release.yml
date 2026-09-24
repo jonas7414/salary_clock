@@ -55,6 +55,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           path: release
@@ -70,6 +73,11 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$RELEASE_TAG" --verify-tag --draft --title "$RELEASE_TAG" --generate-notes
+          NOTES="docs/releases/$RELEASE_TAG.md"
+          if [ -f "$NOTES" ]; then
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "$RELEASE_TAG" --notes-file "$NOTES"
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "$RELEASE_TAG" --generate-notes
+          fi
           gh release upload "$RELEASE_TAG" release/firmware.bin release/firmware.sha256 release/firmware-no-psram.bin release/firmware-no-psram.sha256
           gh release edit "$RELEASE_TAG" --draft=false --latest

@@ -5,9 +5,11 @@ python tools/test_host.py --zig .tools/venv/Lib/site-packages/ziglang/zig.exe
 """
 import argparse
 import calendar
+import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 from PIL import Image, ImageDraw
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -19,12 +21,15 @@ def main():
     parser.add_argument("--zig")
     parser.add_argument("--cjson-dir",type=Path,help="ESP-IDF components/json/cJSON directory")
     args=parser.parse_args()
+    subprocess.run([sys.executable,str(ROOT/"tools/update_taiwan_calendar.py"),"--check"],check=True)
+    subprocess.run([sys.executable,"-m","unittest","discover","-s","tests","-p","test_taiwan_calendar.py"],cwd=ROOT,check=True)
     OUT.mkdir(parents=True,exist_ok=True)
     env=os.environ.copy()
     env["ZIG_GLOBAL_CACHE_DIR"]=str(ROOT/".tools"/"zig-cache")
     env["ZIG_LOCAL_CACHE_DIR"]=str(ROOT/".tools"/"zig-local")
     compiler=[args.zig,"c++"] if args.zig else [args.cxx]
     sources=["tests/test_core.cpp","components/app_core/app_types.cpp","components/app_core/salary_math.cpp",
+             "components/app_core/taiwan_calendar.cpp",
              "components/app_core/button_logic.cpp","components/coin_physics/coin_physics.cpp",
              "components/display/ui_animation.cpp","components/display/ui_renderer.cpp"]
     binary=OUT/("test_core.exe" if os.name=="nt" else "test_core")
@@ -36,11 +41,14 @@ def main():
     subprocess.run(command,cwd=ROOT,env=env,check=True)
     oracle=OUT/"calendar.txt"
     with oracle.open("w",encoding="ascii") as f:
-        for y in list(range(2019,2034))+[1900,2000,2100,2400]:
-            for m in range(1,13):
-                for mask in range(1,128):
-                    count=sum(bool(mask&(1<<calendar.weekday(y,m,d))) for d in range(1,calendar.monthrange(y,m)[1]+1))
-                    f.write(f"{y} {m} {mask} {count}\n")
+        for entry in json.loads((ROOT/"data/taiwan_calendar.json").read_text(encoding="utf-8"))["years"]:
+            y=entry["year"]
+            for m,days in enumerate(entry["workdays"],1):
+                assert len(days)==calendar.monthrange(y,m)[1]
+                index=0
+                for d,working in enumerate(days,1):
+                    index+=int(working)
+                    f.write(f"{y} {m} {d} {working} {days.count('1')} {index}\n")
     result=subprocess.run([str(binary),str(oracle),str(OUT)],cwd=ROOT,env=env,capture_output=True,text=True)
     print(result.stdout,end="")
     if result.returncode:
@@ -108,7 +116,7 @@ def main():
     Image.open(OUT/"stack_settled.ppm").resize((960,510),Image.Resampling.NEAREST).save(OUT/"stack_settled.png")
     frames=[Image.open(OUT/f"coin_{i}.ppm").resize((640,340),Image.Resampling.NEAREST) for i in range(400)]
     frames[0].save(OUT/"coin_physics.gif",save_all=True,append_images=frames[1:],duration=40,loop=0)
-    for scene,count in (("lunch",120),("rest",100)):
+    for scene,count in (("lunch",120),("rest",100),("holiday",100)):
         frames=[Image.open(OUT/f"{scene}_{i}.ppm").resize((640,340),Image.Resampling.NEAREST) for i in range(count)]
         frames[0].save(OUT/f"{scene}.gif",save_all=True,append_images=frames[1:],duration=40,loop=0)
     gain_frames=[]
@@ -118,8 +126,8 @@ def main():
             frame.paste(Image.open(OUT/f"gain_{theme}_{i}.ppm"),(theme*330,0))
         gain_frames.append(frame.resize((1470,255),Image.Resampling.NEAREST))
     gain_frames[0].save(OUT/"money_gain.gif",save_all=True,append_images=gain_frames[1:],duration=40,loop=0)
-    transitions=Image.new("RGB",(1000,750),"#e8ecee")
-    for event,name in enumerate(("work_start", "lunch_start", "work_resume", "work_end")):
+    transitions=Image.new("RGB",(1000,935),"#e8ecee")
+    for event,name in enumerate(("work_start", "lunch_start", "work_resume", "work_end", "holiday_start")):
         frames=[Image.open(OUT/f"transition_{event}_0_{i}.ppm").resize((640,340),Image.Resampling.NEAREST) for i in range(85)]
         frames[0].save(OUT/f"{name}.gif",save_all=True,append_images=frames[1:],duration=40,loop=0)
         for theme in range(3):

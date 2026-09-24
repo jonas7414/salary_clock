@@ -104,6 +104,10 @@ esp_err_t status(httpd_req_t *r) {
     cJSON_AddNumberToObject(j,"free_psram",heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     cJSON_AddNumberToObject(j,"uptime_seconds",esp_timer_get_time()/1000000);
     cJSON_AddNumberToObject(j,"earned_money",s.earned_money);
+    cJSON_AddStringToObject(j,"work_calendar","taiwan_government");
+    cJSON_AddBoolToObject(j,"calendar_available",s.date_key && s.work_state!=WORK_STATE_NO_CALENDAR);
+    cJSON_AddNumberToObject(j,"monthly_work_days",s.monthly_work_days);
+    cJSON_AddNumberToObject(j,"monthly_work_hours",double(s.monthly_work_seconds)/3600);
     cJSON_AddNumberToObject(j,"frame_us",d.frame_us); cJSON_AddNumberToObject(j,"dropped_frames",d.dropped_frames);
     cJSON_AddBoolToObject(j,"partial_rendering",d.partial_rendering);
     return send_json(r,j);

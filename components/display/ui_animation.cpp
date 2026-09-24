@@ -15,9 +15,10 @@ void UiAnimation::update(const SalaryStatus &s,int64_t now,float dt) {
     const bool working=state==WORK_STATE_WORKING_MORNING || state==WORK_STATE_WORKING_AFTERNOON;
     if (state!=previous_) {
         transition_state_=WORK_STATE_NO_TIME; transition_progress_=1.f;
-        // Announce real schedule boundaries, never the first synced snapshot,
-        // a new date, a backwards clock correction or a jump over whole periods.
-        if ((previous_==WORK_STATE_BEFORE_WORK && state==WORK_STATE_WORKING_MORNING) ||
+        // Holidays also announce once on the first synced snapshot and each new
+        // holiday date. Working periods only announce actual schedule boundaries.
+        if (state==WORK_STATE_DAY_OFF ||
+            (previous_==WORK_STATE_BEFORE_WORK && state==WORK_STATE_WORKING_MORNING) ||
             (previous_==WORK_STATE_WORKING_MORNING && state==WORK_STATE_LUNCH) ||
             (previous_==WORK_STATE_LUNCH && state==WORK_STATE_WORKING_AFTERNOON) ||
             (previous_==WORK_STATE_WORKING_AFTERNOON && state==WORK_STATE_AFTER_WORK)) {

@@ -23,7 +23,13 @@ struct NetworkStatus {
     char ap_ssid[33]{};
     int rssi{};
 };
+struct CalendarStatus {
+    int years[2]{};
+    int32_t last_attempt_day{-1};
+    bool updating{},last_check_success{};
+};
 struct DeviceStatus {
+    CalendarStatus calendar{};
     NetworkStatus network{};
     RtcStatus rtc{};
     BatteryStatus battery{};
@@ -51,5 +57,9 @@ void display_publish(uint32_t frame_us, uint32_t dropped, bool partial);
 void time_wait_publish(bool expired);
 void rtc_publish(const RtcStatus &status);
 void battery_publish(const BatteryStatus &status);
+void calendar_publish(const CalendarStatus &status);
+// Limit OTA/calendar TLS working memory to one download at a time.
+bool system_download_begin(TickType_t timeout);
+void system_download_end();
 void system_heartbeat(CriticalTask task);
 bool system_tasks_healthy(int64_t now_us,int64_t max_age_us);

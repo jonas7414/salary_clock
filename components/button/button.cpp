@@ -12,6 +12,7 @@ namespace {
 bool suppress_power_press=false;
 void task(void *) {
     ButtonLogic button;
+    ButtonLogic previous(true);
     TickType_t wake=xTaskGetTickCount();
     uint32_t presses=0;
     while (true) {
@@ -32,6 +33,12 @@ void task(void *) {
                 if (system_request(SystemCommand::Setup)!=ESP_OK)
                     ESP_LOGW("button","Command queue full");
             }
+        }
+        if (!(xEventGroupGetBits(system_events())&SLEEP_REQUESTED_BIT)) {
+            const bool was_pressed=previous.pressed();
+            const auto action=previous.update(gpio_get_level(GPIO_NUM_0)==0,now);
+            if (!was_pressed && previous.pressed()) ++presses;
+            if (action==ButtonAction::Page) { const uint8_t page=255; xQueueSend(page_events(),&page,0); }
         }
         button_publish(held,presses,power_held);
         system_heartbeat(CriticalTask::Button);
@@ -56,7 +63,7 @@ void task(void *) {
 }
 void button_check_wakeup() {
     ESP_ERROR_CHECK(rtc_gpio_deinit(GPIO_NUM_14));
-    gpio_config_t c{}; c.pin_bit_mask=1ULL<<14; c.mode=GPIO_MODE_INPUT; c.pull_up_en=GPIO_PULLUP_ENABLE;
+    gpio_config_t c{}; c.pin_bit_mask=(1ULL<<0)|(1ULL<<14); c.mode=GPIO_MODE_INPUT; c.pull_up_en=GPIO_PULLUP_ENABLE;
     ESP_ERROR_CHECK(gpio_config(&c));
     if (esp_sleep_get_wakeup_cause()==ESP_SLEEP_WAKEUP_EXT0) {
         // Keep the panel dark and all services stopped until the hold is confirmed.
@@ -75,7 +82,7 @@ void button_check_wakeup() {
     gpio_deep_sleep_hold_dis();
 }
 esp_err_t button_start() {
-    gpio_config_t c{}; c.pin_bit_mask=1ULL<<14; c.mode=GPIO_MODE_INPUT; c.pull_up_en=GPIO_PULLUP_ENABLE;
+    gpio_config_t c{}; c.pin_bit_mask=(1ULL<<0)|(1ULL<<14); c.mode=GPIO_MODE_INPUT; c.pull_up_en=GPIO_PULLUP_ENABLE;
     esp_err_t err=gpio_config(&c); if (err!=ESP_OK) return err;
     return xTaskCreate(task,"button",TASK_STACK_BUTTON,nullptr,TASK_PRIORITY_BUTTON,nullptr)==pdPASS ? ESP_OK : ESP_ERR_NO_MEM;
 }

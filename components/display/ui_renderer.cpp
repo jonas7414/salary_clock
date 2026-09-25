@@ -323,6 +323,10 @@ void rest_scene(Canvas &c,uint32_t milliseconds) {
     }
 }
 void header(Canvas &c,const UiModel &m) {
+    if (m.page==4 && m.synced && m.system!=SYSTEM_SETUP_MODE && m.system!=SYSTEM_ERROR) {
+        c.text(16,7,"現在時刻",12,INK); c.text(231,7,"LIVE CLOCK",10,MUTED);
+        c.rect(16,26,288,1,LINE); return;
+    }
     if (m.theme==DisplayTheme::Amber) c.text(12,6,"> SALARY.LOG",12,GOLD);
     else if (m.theme==DisplayTheme::Handheld) c.text(12,6,"PAYDAY / GAME",12,INK);
     else c.text(12,6,"薪水小偷計算器",12,MUTED);
@@ -332,9 +336,69 @@ void header(Canvas &c,const UiModel &m) {
     c.rect(12,26,296,m.theme==DisplayTheme::Handheld?2:1,LINE);
 }
 void footer(Canvas &c,const UiModel &m) {
-    for (unsigned i=0;i<4;++i) {
-        if (m.theme==DisplayTheme::Classic) c.ellipse(286+i*7,160,2,2,i==m.page ? GOLD : LINE);
-        else c.rect(283+i*7,158,5,4,i==m.page?GOLD:LINE);
+    for (unsigned i=0;i<UI_PAGE_COUNT;++i) {
+        if (m.theme==DisplayTheme::Classic) c.ellipse(272+i*7,160,2,2,i==m.page ? GOLD : LINE);
+        else c.rect(269+i*7,158,5,4,i==m.page?GOLD:LINE);
+    }
+}
+void quiet_cloud(Canvas &c,int x,int y,uint32_t milliseconds) {
+    y+=int(std::lround(std::sin(float(milliseconds%4000)*.0015708f)));
+    c.ellipse(float(x),float(y),13,6,LINE);
+    c.ellipse(float(x-5),float(y-4),7,7,LINE); c.ellipse(float(x+4),float(y-5),7,8,LINE);
+    const bool blink=milliseconds%5200>5050;
+    c.rect(x-5,y-1,2,blink?1:2,INK); c.rect(x+3,y-1,2,blink?1:2,INK);
+    c.rect(x-1,y+3,3,1,GOLD);
+}
+void clock_page(Canvas &c,const UiModel &m) {
+    char fraction[8]; std::snprintf(fraction,sizeof(fraction),".%02u",m.hundredths%100);
+    const int main_width=Canvas::width(m.clock,32), fraction_width=Canvas::width(fraction,16);
+    const int left=(320-main_width-fraction_width-8)/2;
+    c.text(left,55,m.clock,32,INK); c.text(left+main_width+8,72,fraction,16,GOLD);
+    c.rect(24,101,272,1,LINE);
+    const char *week[]={"星期日","星期一","星期二","星期三","星期四","星期五","星期六"};
+    char line[64]; std::snprintf(line,sizeof(line),"%s  %s",m.date,week[m.weekday%7]);
+    c.center(160,113,line,16,INK);
+    c.text(24,143,"每一刻都值得",12,MUTED);
+    quiet_cloud(c,281,140,m.animation_ms);
+}
+void holiday_page(Canvas &c,const UiModel &m) {
+    const auto &h=m.holiday; char text[80];
+    c.text(16,35,"休假倒數",16,INK);
+    if (!h.available) {
+        c.center(160,70,"行事曆尚未齊全",16,GOLD);
+        c.center(160,104,"連上網路後再試試",12,MUTED);
+        c.rect(18,129,284,8,LINE); return;
+    }
+    if (h.holiday_days) {
+        std::snprintf(text,sizeof(text),h.holiday_days>=3 ? "%u 天連假" : "休假 %u 天",h.holiday_days);
+        const int width=Canvas::width(text,12);
+        c.rect(304-width-12,34,width+12,20,h.holiday_days>=3 ? GOLD : PANEL);
+        c.text(298-width,38,text,12,h.holiday_days>=3 ? BG : GOLD);
+    }
+    if (h.on_holiday) {
+        c.center(160,68,"休假進行中",24,GREEN);
+        c.center(160,108,"放鬆一下，今天屬於你",12,MUTED);
+    } else {
+        const unsigned days=h.remaining_seconds/86400,hours=h.remaining_seconds%86400/3600;
+        std::snprintf(text,sizeof(text),"%02u",days); c.text(18,64,text,32,GOLD);
+        const int day_width=Canvas::width(text,32);
+        c.text(24+day_width,80,"天",16,INK);
+        std::snprintf(text,sizeof(text),"%02u",hours); c.text(134,64,text,32,GOLD);
+        c.text(140+Canvas::width(text,32),80,"小時",16,INK);
+        std::snprintf(text,sizeof(text),"%02d/%02d 開始放假",h.target_date/100%100,h.target_date%100);
+        c.text(18,109,text,12,MUTED);
+        quiet_cloud(c,281,87,m.animation_ms);
+    }
+    c.rect(18,130,284,8,LINE);
+    c.rect(18,130,int(284*std::clamp(h.progress,0.f,1.f)),8,GOLD);
+    if (h.on_holiday) c.text(18,145,"好好充電，開心放假！",12,GREEN);
+    else {
+        std::snprintf(text,sizeof(text),"總計 %.1f 小時",double(h.remaining_seconds)/3600);
+        c.text(18,145,text,12,INK);
+        if (h.progress_known) {
+            std::snprintf(text,sizeof(text),"%.0f%%",double(h.progress)*100);
+            c.text(302-Canvas::width(text,12),145,text,12,GOLD);
+        }
     }
 }
 void battery_info(Canvas &c,const BatteryStatus &battery) {
@@ -482,10 +546,10 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
             c.text(14,112,"Wi-Fi connected / SNTP pending",12,MUTED);
             c.text(14,141,m.sntp_wait_expired?"同步尚未成功，請檢查網路":"時間同步後開始計算",12,MUTED);
         }
-    } else if (m.salary.work_state==WORK_STATE_NO_CALENDAR) {
+    } else if (m.salary.work_state==WORK_STATE_NO_CALENDAR && m.page<4) {
         c.text(14,42,"行事曆待更新",24,GOLD);
         c.text(14,81,"此年度尚未收錄，暫停薪資計算",16,INK);
-        c.text(14,110,"請更新含該年度行事曆的韌體",12,MUTED);
+        c.text(14,110,"連上網路後自動取得行事曆",12,MUTED);
         c.text(14,137,"時間仍持續運作",12,MUTED);
     } else {
         if (m.page==0) {
@@ -538,6 +602,10 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
                 const int size=Canvas::width(buf,12)>132 ? 10 : 12;
                 c.text(179,53+i*29,buf,size,INK,132);
             }
+        } else if (m.page==4) {
+            clock_page(c,m);
+        } else if (m.page==5) {
+            holiday_page(c,m);
         } else {
             c.text(12,33,"系統資訊",16,INK);
             const char *rtc_label=m.rtc.present?"RTC:Enable":"RTC:None";
@@ -552,7 +620,7 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
             c.text(12,152,"2 clicks: Setup / Hold 5s: Sleep",10,GOLD);
         }
         footer(c,m);
-        schedule_transition(c,m);
+        if (m.page<4) schedule_transition(c,m);
     }
     rtc_sync(c,m);
     if (m.held_ms>=500) {

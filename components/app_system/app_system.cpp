@@ -4,7 +4,7 @@
 namespace {
 EventGroupHandle_t events;
 QueueHandle_t commands, pages, salary;
-SemaphoreHandle_t mutex;
+SemaphoreHandle_t mutex,download_mutex;
 DeviceStatus device;
 TaskHealth health;
 portMUX_TYPE health_lock=portMUX_INITIALIZER_UNLOCKED;
@@ -15,7 +15,8 @@ esp_err_t app_system_init() {
     pages = xQueueCreate(8,sizeof(uint8_t));
     salary = xQueueCreate(1,sizeof(SalaryStatus));
     mutex = xSemaphoreCreateMutex();
-    if (!events || !commands || !pages || !salary || !mutex) return ESP_ERR_NO_MEM;
+    download_mutex=xSemaphoreCreateMutex();
+    if (!events || !commands || !pages || !salary || !mutex || !download_mutex) return ESP_ERR_NO_MEM;
     SalaryStatus initial{}; xQueueOverwrite(salary,&initial);
     return ESP_OK;
 }
@@ -54,6 +55,9 @@ void display_publish(uint32_t t,uint32_t d,bool p) {
 void time_wait_publish(bool e) { xSemaphoreTake(mutex,portMAX_DELAY); device.sntp_wait_expired=e; xSemaphoreGive(mutex); }
 void rtc_publish(const RtcStatus &s) { xSemaphoreTake(mutex,portMAX_DELAY); device.rtc=s; xSemaphoreGive(mutex); }
 void battery_publish(const BatteryStatus &s) { xSemaphoreTake(mutex,portMAX_DELAY); device.battery=s; xSemaphoreGive(mutex); }
+void calendar_publish(const CalendarStatus &s) { xSemaphoreTake(mutex,portMAX_DELAY); device.calendar=s; xSemaphoreGive(mutex); }
+bool system_download_begin(TickType_t timeout) { return xSemaphoreTake(download_mutex,timeout)==pdTRUE; }
+void system_download_end() { xSemaphoreGive(download_mutex); }
 void system_heartbeat(CriticalTask task) {
     const auto now=esp_timer_get_time();
     portENTER_CRITICAL(&health_lock); health.beat(task,now); portEXIT_CRITICAL(&health_lock);

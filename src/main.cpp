@@ -5,6 +5,7 @@
 #include "wifi_manager.h"
 #include "time_manager.h"
 #include "battery_manager.h"
+#include "calendar_manager.h"
 #include "salary.h"
 #include "ota_manager.h"
 #include "esp_log.h"
@@ -25,6 +26,8 @@ extern "C" void app_main() {
     const auto battery_error=battery_manager_start();
     if (battery_error!=ESP_OK) ESP_LOGW("main","Battery monitor unavailable: %s",esp_err_to_name(battery_error));
     ESP_ERROR_CHECK(button_start());
+    const auto calendar_error=calendar_manager_start();
+    if (calendar_error!=ESP_OK) ESP_LOGW("main","Calendar updates unavailable: %s",esp_err_to_name(calendar_error));
     ESP_ERROR_CHECK(salary_start());
     ESP_ERROR_CHECK(time_manager_start());
     ESP_ERROR_CHECK(esp_task_wdt_reset());

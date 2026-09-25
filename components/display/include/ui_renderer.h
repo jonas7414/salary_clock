@@ -2,15 +2,22 @@
 #include "app_types.h"
 #include "battery_status.h"
 #include "coin_physics.h"
+#include "holiday_countdown.h"
 #include <cstddef>
 #include <cstdint>
 constexpr int SCREEN_WIDTH=320, SCREEN_HEIGHT=170;
+constexpr unsigned UI_PAGE_COUNT=6;
+constexpr unsigned ui_next_page(unsigned page,bool previous) {
+    return (page%UI_PAGE_COUNT+(previous ? UI_PAGE_COUNT-1 : 1))%UI_PAGE_COUNT;
+}
 struct UiModel {
     AppConfig config{};
     DisplayTheme theme{DisplayTheme::Classic};
     SalaryStatus salary{};
     RtcStatus rtc{};
     BatteryStatus battery{};
+    HolidayCountdown holiday{};
+    unsigned hundredths{},weekday{};
     SystemState system{SYSTEM_BOOTING};
     unsigned page{};
     char date[16]{"----/--/--"};

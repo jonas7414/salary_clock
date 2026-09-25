@@ -282,6 +282,8 @@ bool install(const ota::Release &release,const char *&reason) {
     },ota_config::DOWNLOAD_ATTEMPTS);
 }
 void check(bool auto_install) {
+    if (!system_download_begin(portMAX_DELAY)) return;
+    struct DownloadGuard { ~DownloadGuard() { system_download_end(); } } download_guard;
     xSemaphoreTake(status_mutex,portMAX_DELAY);
     status.downloaded_bytes=0; status.total_bytes=0; status.percentage=0; status.http_status=0;
     status.latest_version[0]=0;

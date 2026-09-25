@@ -99,6 +99,11 @@ esp_err_t status(httpd_req_t *r) {
     cJSON_AddBoolToObject(j,"sntp_synced",bits&SNTP_SYNCED_BIT);
     cJSON_AddBoolToObject(j,"rtc_present",d.rtc.present);
     cJSON_AddBoolToObject(j,"rtc_valid",d.rtc.valid);
+    cJSON *calendar_years=cJSON_AddArrayToObject(j,"calendar_cached_years");
+    for (int year:d.calendar.years) if (year) cJSON_AddItemToArray(calendar_years,cJSON_CreateNumber(year));
+    cJSON_AddNumberToObject(j,"calendar_last_attempt_utc_day",d.calendar.last_attempt_day);
+    cJSON_AddBoolToObject(j,"calendar_updating",d.calendar.updating);
+    cJSON_AddBoolToObject(j,"calendar_last_check_success",d.calendar.last_check_success);
     cJSON_AddStringToObject(j,"battery_state",battery_state_name(d.battery.state));
     if (d.battery.supply_mv) cJSON_AddNumberToObject(j,"supply_mv",d.battery.supply_mv);
     else cJSON_AddNullToObject(j,"supply_mv");

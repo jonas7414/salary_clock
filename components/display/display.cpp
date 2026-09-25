@@ -22,6 +22,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <sys/time.h>
 namespace {
 constexpr int STRIP_ROWS=10, STRIPS=SCREEN_HEIGHT/STRIP_ROWS;
 constexpr int FRAME_MS=40;
@@ -179,10 +180,13 @@ void task(void *) {
         model.free_psram=heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
         model.frame_us=device.frame_us; model.dropped_frames=dropped;
         uint8_t page;
-        while (xQueueReceive(page_events(),&page,0)==pdTRUE) model.page=(model.page+1)%4;
+        while (xQueueReceive(page_events(),&page,0)==pdTRUE) model.page=ui_next_page(model.page,page==255);
         uint16_t minute=0;
         if (model.synced) {
-            time_t now=time(nullptr); tm local{}; localtime_r(&now,&local);
+            timeval wall{}; gettimeofday(&wall,nullptr);
+            time_t now=wall.tv_sec; tm local{}; localtime_r(&now,&local);
+            model.hundredths=unsigned(wall.tv_usec/10000); model.weekday=unsigned(local.tm_wday);
+            model.holiday=holiday_countdown(local);
             minute=local.tm_hour*60+local.tm_min;
             std::strftime(model.date,sizeof(model.date),"%Y/%m/%d",&local);
             std::strftime(model.clock,sizeof(model.clock),"%H:%M:%S",&local);

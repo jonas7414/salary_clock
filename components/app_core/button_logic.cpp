@@ -17,6 +17,7 @@ ButtonAction ButtonLogic::update(bool pressed, uint32_t now) {
         } else {
             if (sleep_sent_) return ButtonAction::None;
             const uint32_t held=now-press_at_;
+            if (navigation_only_) return held<500 ? ButtonAction::Page : ButtonAction::None;
             if (held>=5000) return ButtonAction::Sleep;
             // A cancelled long hold must never enter setup or change pages.
             if (held>=500) { second_click_=false; return ButtonAction::None; }
@@ -25,7 +26,7 @@ ButtonAction ButtonLogic::update(bool pressed, uint32_t now) {
             click_at_=now;
         }
     }
-    if (stable_ && !sleep_sent_ && uint32_t(now-press_at_)>=5000) {
+    if (!navigation_only_ && stable_ && !sleep_sent_ && uint32_t(now-press_at_)>=5000) {
         sleep_sent_=true;
         click_pending_=second_click_=false;
         return ButtonAction::Sleep;

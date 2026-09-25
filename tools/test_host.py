@@ -28,11 +28,23 @@ def main():
     env["ZIG_GLOBAL_CACHE_DIR"]=str(ROOT/".tools"/"zig-cache")
     env["ZIG_LOCAL_CACHE_DIR"]=str(ROOT/".tools"/"zig-local")
     compiler=[args.zig,"c++"] if args.zig else [args.cxx]
+    calendar_binary=OUT/("test_calendar_download.exe" if os.name=="nt" else "test_calendar_download")
+    subprocess.run(compiler+["-std=c++17","-O2","-Wall","-Wextra","-Werror","-pthread",
+        "-Icomponents/app_core/include","-Icomponents/calendar_manager/include","tests/test_calendar_download.cpp",
+        "components/app_core/taiwan_calendar.cpp","components/calendar_manager/calendar_json.cpp",
+        "components/calendar_manager/calendar_cache.cpp","-o",str(calendar_binary)],cwd=ROOT,env=env,check=True)
+    subprocess.run([str(calendar_binary)],cwd=ROOT,env=env,check=True)
     button_binary=OUT/("test_button.exe" if os.name=="nt" else "test_button")
     subprocess.run(compiler+["-std=c++17","-O2","-Wall","-Wextra","-Werror",
         "-Icomponents/app_core/include","tests/test_button.cpp","components/app_core/button_logic.cpp",
         "-o",str(button_binary)],cwd=ROOT,env=env,check=True)
     subprocess.run([str(button_binary)],cwd=ROOT,env=env,check=True)
+    pages_binary=OUT/("test_extra_pages.exe" if os.name=="nt" else "test_extra_pages")
+    subprocess.run(compiler+["-std=c++17","-O2","-Wall","-Wextra","-Werror","-pthread",
+        "-Icomponents/app_core/include","-Icomponents/display/include","-Icomponents/coin_physics/include",
+        "tests/test_extra_pages.cpp","components/app_core/holiday_countdown.cpp","components/app_core/taiwan_calendar.cpp",
+        "components/app_core/button_logic.cpp","components/display/ui_renderer.cpp","-o",str(pages_binary)],cwd=ROOT,env=env,check=True)
+    subprocess.run([str(pages_binary),str(OUT)],cwd=ROOT,env=env,check=True)
     sources=["tests/test_core.cpp","components/app_core/app_types.cpp","components/app_core/salary_math.cpp",
              "components/app_core/taiwan_calendar.cpp","components/app_core/battery_status.cpp",
              "components/app_core/button_logic.cpp","components/coin_physics/coin_physics.cpp",

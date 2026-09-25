@@ -4,7 +4,7 @@
 #include <cstdint>
 using i2c_master_bus_handle_t=void *;
 using i2c_master_dev_handle_t=void *;
-constexpr int I2C_NUM_0=0,GPIO_NUM_18=18,GPIO_NUM_17=17,I2C_CLK_SRC_DEFAULT=0,I2C_ADDR_BIT_LEN_7=0;
+constexpr int I2C_NUM_0=0,GPIO_NUM_43=43,GPIO_NUM_44=44,I2C_CLK_SRC_DEFAULT=0,I2C_ADDR_BIT_LEN_7=0;
 struct i2c_master_bus_config_t {
     int i2c_port,sda_io_num,scl_io_num,clk_source;
     uint8_t glitch_ignore_cnt;

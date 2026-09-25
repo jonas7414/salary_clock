@@ -79,7 +79,8 @@ static void display_schedule_tests() {
     CHECK(button.update(true,29)==ButtonAction::None && !button.pressed());
     CHECK(button.update(true,30)==ButtonAction::None && button.pressed());
     CHECK(button.update(false,40)==ButtonAction::None && button.pressed());
-    CHECK(button.update(false,70)==ButtonAction::Page && !button.pressed());
+    CHECK(button.update(false,70)==ButtonAction::None && !button.pressed());
+    CHECK(button.update(false,470)==ButtonAction::Page);
 }
 static void boot_animation_tests() {
     constexpr int64_t start=123456789;
@@ -170,14 +171,17 @@ static void salary_tests(const char *oracle) {
     CHECK(dec.date_key==20261231 && jan.date_key==20270101 && jan.earned_money==0);
 }
 static void button_tests() {
-    ButtonLogic b;CHECK(b.update(true,100)==ButtonAction::None);b.update(false,110);b.update(true,120);
-    CHECK(b.update(true,150)==ButtonAction::None);b.update(false,300);CHECK(b.update(false,330)==ButtonAction::Page);
-    b.update(true,1000);b.update(true,1030);CHECK(b.update(true,6030)==ButtonAction::None);
-    b.update(false,6200);CHECK(b.update(false,6230)==ButtonAction::Setup);
-    b.update(true,7000);b.update(true,7030);CHECK(b.update(true,17030)==ButtonAction::Reset);
-    CHECK(b.update(true,18000)==ButtonAction::None);b.update(false,18010);CHECK(b.update(false,18040)==ButtonAction::None);
-    ButtonLogic wrap;const uint32_t start=UINT32_MAX-4000;wrap.update(true,start);wrap.update(true,start+30);
-    CHECK(wrap.held_ms(start+6030)==6000);wrap.update(false,start+6030);CHECK(wrap.update(false,start+6060)==ButtonAction::Setup);
+    ButtonLogic b;
+    b.update(true,0); b.update(true,30);
+    CHECK(b.update(true,5029)==ButtonAction::None);
+    CHECK(b.update(true,5030)==ButtonAction::Sleep);
+    CHECK(b.update(true,15030)==ButtonAction::None);
+    b.update(false,15040); CHECK(b.update(false,15070)==ButtonAction::None);
+    b.update(true,16000); b.update(true,16030);
+    b.update(false,16100); b.update(false,16130);
+    b.update(true,16300); b.update(true,16330);
+    b.update(false,16400); CHECK(b.update(false,16430)==ButtonAction::Setup);
+    CHECK(b.update(false,17000)==ButtonAction::None);
 }
 static void wifi_tests() {
     using State=WifiLinkState;

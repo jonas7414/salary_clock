@@ -10,7 +10,7 @@ Ds3231::~Ds3231() {
 }
 esp_err_t Ds3231::begin() {
     i2c_master_bus_config_t bus{};
-    bus.i2c_port=I2C_NUM_0;bus.sda_io_num=GPIO_NUM_18;bus.scl_io_num=GPIO_NUM_17;
+    bus.i2c_port=I2C_NUM_0;bus.sda_io_num=GPIO_NUM_43;bus.scl_io_num=GPIO_NUM_44;
     bus.clk_source=I2C_CLK_SRC_DEFAULT;bus.glitch_ignore_cnt=7;
     bus.flags.enable_internal_pullup=true;
     auto err=i2c_new_master_bus(&bus,&bus_);

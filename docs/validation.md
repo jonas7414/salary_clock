@@ -44,7 +44,7 @@ PlatformIO Core 6.2.0 的 `tdisplay_s3` 與 `tdisplay_s3_no_psram` 均編譯成�
 以下 RTC 實板項目仍待接線驗收：
 
 1. 不接 DS3231 開機，確認原本 SNTP 校時、`ONLINE`／離線標籤與初次 Wi-Fi 逾時設定流程維持不變。
-2. 接上 SDA=GPIO18、SCL=GPIO17、3.3V、GND；首次或失效 RTC 在取得 SNTP 前不計薪，取得後播放 `RTC SYNC` 並顯示 `RTC SAVED`，主頁標籤為 `HWCLOCK MODE`。
+2. 接上 SDA=GPIO43、SCL=GPIO44、3.3V、GND；首次或失效 RTC 在取得 SNTP 前不計薪，取得後播放 `RTC SYNC` 並顯示 `RTC SAVED`，主頁標籤為 `HWCLOCK MODE`。
 3. 安裝適用備援電池、完成校時後關閉基地台並斷電重啟；確認播放 `RTC READ`、時間正確且繼續計薪。等待超過 60 秒仍保持時鐘頁，開啟基地台後可重連並再次寫入 RTC。
 4. RTC 接妥但阻擋 NTP：有有效 RTC 時繼續運作，無有效時間時仍等待；單純取得 Wi-Fi IP 不會覆寫 RTC。
 5. 驗證三種風格與 DOUBLE／PARTIAL 模式的同步動畫、按鈕提示優先顯示，以及切換時區後不會將偏移重複套入 RTC。
@@ -125,3 +125,12 @@ v1.4.0 的 Linux CI 在動畫測試的時間字串格式遇到 `-Werror=format-t
 ## 需求對應
 
 附件 1–7、13：`app_config` / `app_core` / `platformio.ini`；8–12：`wifi_manager` / `setup_portal`；14–19、44–48：薪資核心、salary task、四頁 renderer；20–43、59、62、66：coin physics、ui_animation、renderer；49–51、57：native LCD owner、雙 framebuffer 與 fallback strip；52：button task / ButtonLogic；53–56、60–61：Wi-Fi policy、SNTP、EventGroup、集中 task 設定；63：host tests 與上述板端矩陣；64–65、67：README、完整專案與 build artifacts。
+## GPIO14 單按鈕操作 1.4.2（2026-09-26）
+
+本次 `tdisplay_s3` 與 `tdisplay_s3_no_psram` 皆已編譯成功，韌體位於 `.pio/build/<環境>/firmware.bin`。
+
+僅輪詢 GPIO14：短按切頁（等待 400 ms 排除雙擊）、雙擊進入設定、長按五秒關屏，放開並穩定 30 ms 後進入 deep sleep。已移除按鈕的 Reset 動作與 FactoryReset 分派，GPIO0 不再參與操作；清除設定僅保留於設定網頁並要求確認。睡眠前取得設定／OTA 共用維護鎖，背光 GPIO38 及板載供電控制 GPIO15 保持低電位，以 GPIO14 低電位 EXT0 喚醒。喚醒後在 LCD、Wi-Fi 與其他服務啟動前檢查連續五秒按壓；提早放開則再次睡眠，成功後忽略該次按壓直到放開。實際喚醒按壓時間包含韌體啟動時間。
+
+EXT0 與 RTC GPIO 還原方式依 [ESP-IDF 睡眠文件](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32s3/api-reference/system/sleep_modes.html)。`tests/test_button.cpp` 已用 MSVC C++17 `/W4 /WX` 編譯並執行，2,562 項檢查通過，涵蓋短按／雙擊、五秒邊界、持續按住只觸發一次、放開不切頁、單擊後長按不進設定、取消長按、去彈跳及毫秒計數溢位。測試也已整合至 `tools/test_host.py`；此次未執行完整主機測試套件。
+
+實板待驗收：開機版本顯示 1.4.2、GPIO14 短按切頁／雙擊設定、GPIO0 不觸發設定或清除、五秒關屏與放開後睡眠、持續按住不立即恢復或清除設定、短按喚醒後保持黑屏並回睡、五秒喚醒與放開後正常操作、RTC 離線恢復、USB／電池供電下睡眠耗電，以及 OTA 期間拒絕睡眠。尚未燒錄，不能視為實板通過。

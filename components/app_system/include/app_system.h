@@ -10,7 +10,8 @@
 constexpr EventBits_t WIFI_CONNECTED_BIT = BIT0, TIME_SYNCED_BIT = BIT1,
     CONFIG_READY_BIT = BIT2, SETUP_MODE_BIT = BIT3, SYSTEM_ERROR_BIT = BIT4,
     WIFI_ASSOCIATED_BIT = BIT5, WIFI_CONNECTING_BIT = BIT6, WIFI_STARTED_BIT = BIT7,
-    OTA_ACTIVE_BIT = BIT8, SNTP_SYNCED_BIT = BIT9, RTC_READY_BIT = BIT10;
+    OTA_ACTIVE_BIT = BIT8, SNTP_SYNCED_BIT = BIT9, RTC_READY_BIT = BIT10,
+    SLEEP_REQUESTED_BIT = BIT11;
 constexpr unsigned TASK_PRIORITY_WIFI = 4, TASK_PRIORITY_TIME = 2, TASK_PRIORITY_SALARY = 2,
     TASK_PRIORITY_DISPLAY = 5, TASK_PRIORITY_BUTTON = 3, TASK_PRIORITY_OTA = 1;
 constexpr unsigned TASK_STACK_WIFI = 5120, TASK_STACK_TIME = 3072, TASK_STACK_SALARY = 4096,
@@ -27,6 +28,7 @@ struct DeviceStatus {
     RtcStatus rtc{};
     BatteryStatus battery{};
     uint32_t button_held_ms{};
+    bool power_button_held{};
     uint32_t button_presses{};
     uint32_t frame_us{};
     uint32_t dropped_frames{};
@@ -44,7 +46,7 @@ void salary_publish(const SalaryStatus &status);
 SalaryStatus salary_snapshot();
 DeviceStatus device_snapshot();
 void network_publish(const NetworkStatus &status);
-void button_publish(uint32_t held_ms,uint32_t presses);
+void button_publish(uint32_t held_ms,uint32_t presses,bool power_held=false);
 void display_publish(uint32_t frame_us, uint32_t dropped, bool partial);
 void time_wait_publish(bool expired);
 void rtc_publish(const RtcStatus &status);

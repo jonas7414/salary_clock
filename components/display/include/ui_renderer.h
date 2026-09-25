@@ -19,6 +19,7 @@ struct UiModel {
     char idf[32]{}, firmware[16]{};
     int rssi{};
     uint32_t held_ms{}, free_heap{}, free_psram{}, uptime{}, dropped_frames{}, frame_us{};
+    bool power_button_held{};
     uint32_t animation_ms{};
     bool synced{}, sntp_synced{}, connected{}, associated{}, sntp_wait_expired{}, partial{};
     float rtc_progress{1.f};

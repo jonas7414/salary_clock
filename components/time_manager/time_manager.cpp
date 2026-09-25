@@ -37,7 +37,7 @@ void task(void *) {
     const auto detected=rtc.begin();
     if (detected==ESP_OK) {
         rtc_status.present=true;
-        ESP_LOGI("time","DS3231 detected at 0x68 (SDA GPIO18, SCL GPIO17)");
+        ESP_LOGI("time","DS3231 detected at 0x68 (SDA GPIO43, SCL GPIO44)");
         rtc_begin_activity(rtc_status,RtcOperation::Read);
         time_t utc{};
         auto err=rtc.read_utc(utc);

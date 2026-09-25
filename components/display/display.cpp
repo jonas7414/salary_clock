@@ -1,4 +1,5 @@
 #include "display.h"
+#include "button.h"
 #include "display_schedule.h"
 #include "ui_renderer.h"
 #include "ui_animation.h"
@@ -136,8 +137,27 @@ void task(void *) {
     TickType_t wake=xTaskGetTickCount(); int64_t last_us=esp_timer_get_time();
     BootAnimation boot(last_us);
     uint32_t dropped=0;
+    int64_t released_at=0;
+    bool sleep_lock=false;
     while (true) {
         const int64_t frame_start=esp_timer_get_time();
+        if (xEventGroupGetBits(system_events())&SLEEP_REQUESTED_BIT) {
+            if (!sleep_lock) sleep_lock=app_config_begin_ota();
+            if (!sleep_lock) {
+                xEventGroupClearBits(system_events(),SLEEP_REQUESTED_BIT);
+                released_at=0;
+            } else {
+                update_screen(model,false,panel_on);
+                gpio_set_level(GPIO_NUM_38,0);
+                if (gpio_get_level(GPIO_NUM_14)==0) released_at=0;
+                else if (!released_at) released_at=frame_start;
+                else if (frame_start-released_at>=30000) button_enter_deep_sleep();
+                system_heartbeat(CriticalTask::Display);
+                vTaskDelay(pdMS_TO_TICKS(FRAME_MS));
+                wake=xTaskGetTickCount();
+                continue;
+            }
+        }
         const float dt=std::clamp(float(frame_start-last_us)/1000000.f,0.f,.05f); last_us=frame_start;
         const auto device=device_snapshot(); model.salary=salary_snapshot(); model.system=system_state();
         const auto bits=xEventGroupGetBits(system_events()); model.synced=bits&TIME_SYNCED_BIT; model.connected=bits&WIFI_CONNECTED_BIT;
@@ -148,6 +168,7 @@ void task(void *) {
         model.rtc_progress=std::clamp(float(frame_start-model.rtc.activity_started_us)/3200000.f,0.f,
             model.rtc.result==RtcResult::Pending?.8f:1.f);
         model.held_ms=device.button_held_ms; model.sntp_wait_expired=device.sntp_wait_expired;
+        model.power_button_held=device.power_button_held;
         model.boot_progress=boot.update(frame_start,model.system,model.held_ms);
         std::snprintf(model.ap_ssid,sizeof(model.ap_ssid),"%s",device.network.ap_ssid);
         std::snprintf(model.ssid,sizeof(model.ssid),"%s",device.network.ssid);

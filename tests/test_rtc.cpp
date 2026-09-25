@@ -25,7 +25,7 @@ void transfer_args(i2c_master_dev_handle_t handle,int timeout) {
 }
 }
 esp_err_t i2c_new_master_bus(const i2c_master_bus_config_t *config,i2c_master_bus_handle_t *out) {
-    CHECK(!bus_active);CHECK(config->sda_io_num==18 && config->scl_io_num==17);
+    CHECK(!bus_active);CHECK(config->sda_io_num==43 && config->scl_io_num==44);
     CHECK(config->flags.enable_internal_pullup);bus_active=true;*out=&bus_active;return ESP_OK;
 }
 esp_err_t i2c_del_master_bus(i2c_master_bus_handle_t handle) {

@@ -549,7 +549,7 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
             std::snprintf(buf,sizeof(buf),"Heap %luK   PSRAM %luK   %s",static_cast<unsigned long>(m.free_heap/1024),static_cast<unsigned long>(m.free_psram/1024),m.partial?"PARTIAL":"DOUBLE");c.text(12,108,buf,10,INK);
             std::snprintf(buf,sizeof(buf),"Frame %luus   Missed %lu",static_cast<unsigned long>(m.frame_us),static_cast<unsigned long>(m.dropped_frames));c.text(12,121,buf,10,MUTED);
             battery_info(c,m.battery);
-            c.text(12,152,"Long press: 5 sec Setup / 10 sec Reset",10,GOLD);
+            c.text(12,152,"2 clicks: Setup / Hold 5s: Sleep",10,GOLD);
         }
         footer(c,m);
         schedule_transition(c,m);
@@ -557,14 +557,8 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
     rtc_sync(c,m);
     if (m.held_ms>=500) {
         c.rect(40,36,240,105,PANEL);c.rect(40,36,240,2,GOLD);
-        if (m.held_ms<5000) {
-            c.center(160,49,"繼續按住進入設定",16,INK);
-            std::snprintf(buf,sizeof(buf),"%lu",static_cast<unsigned long>((5000-m.held_ms+999)/1000));
-            c.center(160,78,buf,32,GOLD);
-        } else {
-            c.center(160,50,"放開進入設定",16,GOLD);
-            std::snprintf(buf,sizeof(buf),"%lu",static_cast<unsigned long>(m.held_ms>=10000 ? 0 : (10000-m.held_ms+999)/1000));
-            c.center(160,77,buf,24,INK);c.center(160,111,"繼續按住將清除設定",12,MUTED);
-        }
+        c.center(160,49,m.held_ms<5000 ? "HOLD TO SLEEP" : "RELEASE TO SLEEP",16,INK);
+        std::snprintf(buf,sizeof(buf),"%lu",static_cast<unsigned long>(m.held_ms>=5000 ? 0 : (5000-m.held_ms+999)/1000));
+        c.center(160,78,buf,32,GOLD);
     }
 }

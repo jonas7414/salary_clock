@@ -10,6 +10,7 @@
 #include "esp_log.h"
 #include "esp_task_wdt.h"
 extern "C" void app_main() {
+    button_check_wakeup();
     // A stuck initializer must also reset pending firmware for bootloader rollback.
     ESP_ERROR_CHECK(esp_task_wdt_add(nullptr));
     ESP_ERROR_CHECK(app_system_init());

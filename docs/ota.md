@@ -1,8 +1,10 @@
-# GitHub Releases OTA（v1.4.1）
+# GitHub Releases OTA（v1.4.4）
 
 ## 實際行為
 
-**每次重新開機，連上 Wi-Fi、取得有效時間與設定後，等待 20 秒，自動檢查一次；有較新版本就安裝。** 檢查失敗會保留目前韌體及功能，下次開機或手動呼叫 API 才再試。尚未取得網路／SNTP 時等待 EventGroup，不查詢 GitHub。
+**每次重新開機，連上 Wi-Fi、取得有效時間與設定後，等待 20 秒，自動檢查一次；有新版先詢問，不自動安裝。** 彈窗預選「稍後」，BOOT 選擇、GPIO14 確認。「此版本不再提醒」持久保存版本號，日後更高版本仍會提示；在系統資訊長按 BOOT 2 秒手動檢查時，可重新顯示被略過的版本。已是最新版時在系統資訊顯示。
+
+只有確認後才下載；全程在前景顯示進度條、百分比、已下載與總容量，保持亮屏，阻止翻頁、設定與睡眠。自動檢查失敗不干擾日常頁面，手動檢查／安裝失敗顯示可返回的提示。檢查失敗後不在同一次開機自動重試。設定模式不可連網檢查，需先結束設定；離線的手動要求會立即回報錯誤，不保留延後安裝的要求。
 
 公開來源為 `jonas7414/salary_clock`，API 為 `https://api.github.com/repos/jonas7414/salary_clock/releases/latest`。裝置不使用 GitHub PAT。PSRAM 組態選 `firmware.bin`，明確停用 PSRAM 的組態選 `firmware-no-psram.bin`，不會跨組態取檔。
 
@@ -68,7 +70,7 @@ flowchart TD
 
 | 檔案／模組 | 責任 |
 | --- | --- |
-| `version.txt` | 唯一正式韌體版本來源，現為 1.3.0 |
+| `version.txt` | 唯一正式韌體版本來源 |
 | 根 `CMakeLists.txt`、`tools/configure_build.py` | 注入 ESP app descriptor 與 `APP_FIRMWARE_VERSION`，驗證 board／分區，確保既有 sdkconfig 啟用 OTA 必要項 |
 | `components/ota_manager/include/ota_config.h` | Repository、組態資產名、開機延遲、健康期、timeout、緩衝區限制 |
 | `ota_policy.cpp/.h` | SemVer、Release JSON、SHA 檔案格式及 HTTPS host 白名單；可直接做主機測試 |
@@ -85,9 +87,9 @@ flowchart TD
 
 ### 更新順序
 
-1. Worker 等待三個 EventGroup bit，開機只自動檢查一次；手動要求透過長度 4 的 queue 序列化。
+1. Worker 等待三個 EventGroup bit，開機只自動檢查一次；手動要求透過長度 1 的 queue 序列化，忙碌時拒絕重複要求。
 2. API JSON 最多 32 KiB、最多 12 層，依鍵名找 stable tag 與對應資產，拒絕草稿、prerelease、重複鍵、重複資產、非法大小／URL／版本。
-3. 數值比對 major/minor/patch；`v` 可省略，正確處理 1.9.0 < 1.10.0。解析器也支援 SemVer prerelease precedence 與忽略 build metadata，但自動安裝只接受 stable Release。
+3. 數值比對 major/minor/patch；`v` 可省略，正確處理 1.9.0 < 1.10.0。解析器也支援 SemVer prerelease precedence 與忽略 build metadata，但只接受 stable Release。有新版先依提醒偏好顯示彈窗；安裝要求帶著使用者已確認的版本，重新取得 metadata 若版本不同，必須再次確認。
 4. SHA 來源為 GitHub asset 的 `digest` 或同 Release 的 `.sha256`。兩者存在時必須一致。發布流程固定產生 checksum；兩者皆缺少會拒絕安裝。
 5. 驗證 inactive partition、容量與故障版本紀錄，先讀 app header／descriptor 確認 ESP32-S3、專案名稱、tag 版本，再開始擦寫。
 6. 使用 `esp_http_client` 加憑證 bundle；手動處理最多 5 次 redirect。每一跳只接受 GitHub 指定 HTTPS hosts，禁止 HTTP downgrade、自訂 port、userinfo 或外部 host。CDN 簽名 URL 不寫入 OTA log。
@@ -117,18 +119,20 @@ flowchart TD
 ```cpp
 #include "ota_manager.h"
 ota_check_update();                 // 只檢查，不安裝；非阻塞
-ota_start_update();                 // 重新取得 metadata，僅安裝較新版
+ota_start_update();                 // 必須有有效新版彈窗；重新驗證相同版本後才安裝
+ota_prompt_next();                  // 切換更新／稍後／此版本不再提醒
+ota_prompt_confirm();               // 確認選項，或關閉已完成的手動檢查提示
 const char *current=ota_get_current_version();
 OtaStatus snapshot=ota_get_status(); // 含 latest_version、HTTP code、error、message
 OtaState state=ota_get_state();
 bool available=ota_is_update_available();
 ```
 
-`ota_init()` 由 main 在現有 task 建立後呼叫一次。尚未初始化或 queue 已滿時要求會回傳 `ESP_ERR_INVALID_STATE`。離線的手動要求在連線／校時完成後執行。`latest_version` 以 snapshot 複製，避免跨 task 共用可變字串指標。
+`ota_init()` 由 main 在現有 task 建立後呼叫一次。尚未初始化、忙碌、queue 已滿或缺少有效確認時要求會回傳 `ESP_ERR_INVALID_STATE`。離線手動檢查顯示失敗，讓使用者返回後自行重試。`latest_version` 以 snapshot 複製，避免跨 task 共用可變字串指標。
 
 `ota_set_callback(fn, context)` 提供 START／PROGRESS／VERIFY／SUCCESS／FAILED。Callback 在 OTA worker 執行，必須快速返回；可將 snapshot 放入 UI queue，不可直接做長時間 LCD 工作。進度包含 downloaded_bytes、total_bytes、percentage；下載 100% 不代表驗證成功，請看 state。
 
-OTA 不依賴 display／Web／CLI。現有產品沒有新增未完成的按鈕或 CLI；未來從各介面呼叫上述 API 即可。
+OTA worker 不直接操作 LCD；display 讀取狀態快照，button 透過 API 操作。進出彈窗會清除舊按鍵狀態，等兩顆按鈕放開並穩定後才接受新操作，避免原本的長按／翻頁變成更新確認。
 
 下載期間 app_config maintenance mutex 阻止 save/reset，snapshot 讀取保持可用；`OTA_ACTIVE_BIT` 阻止新的 setup/reboot/reset 命令。已排入的命令遇到 reset 鎖衝突會記錄錯誤，不會用 assertion 造成意外重啟。任意實體斷電仍按 A/B 原理保留正在執行的 app。
 
@@ -143,6 +147,8 @@ Metadata socket timeout 為 10 秒，韌體下載為 30 秒。遇到 `-ESP_ERR_H
 Worker stack 12 KiB，metadata／TLS／4 KiB buffer 在 heap；檢查前後記錄 free heap、minimum heap 與 stack watermark。實際最低剩餘記憶體及 LCD FPS 仍需雙組態實測。
 
 ## NVS 相容性
+
+v1.4.4 新增 `salary_thief/display_prefs`（頁面順序與紀念日）及 `salary_thief/ota_ignored`（不再提醒的版本）。缺少或無效的頁面偏好使用預設順序 `012453`，系統資訊在最後；缺少紀念日則關閉顯示。儲存其他設定保留忽略版本，恢復原廠一併清除。
 
 不改原 NVS offset、size、namespace 或 config record。NVS 初始化若回報 no-free-pages／new-version，現在回傳錯誤且保留資料，不會自動 erase；待確認的 OTA 韌體因初始化失敗 reset 時可回滾。
 
@@ -168,11 +174,13 @@ git tag v1.4.1
 git push origin v1.4.1
 ```
 
-已安裝支援 OTA 的 1.2.x／1.3.0 可重新開機檢查 v1.4.1。下載期間執行的是裝置目前的下載器，1.2.2 起具備逾時重試；若 1.2.0／1.2.1 的舊下載器反覆逾時，需先透過 USB 安裝修正版。若已安裝 1.4.1，看到相同版本會跳過更新；下一次 OTA 測試需發布更高版本。沒有 OTA 的舊版必須先完成 USB 安裝。
+已安裝支援 OTA 的舊版可重新開機檢查新版。下載期間執行的是裝置目前的下載器，舊版的自動安裝行為會持續到 v1.4.4 安裝完成後，之後才改成詢問。1.2.2 起具備逾時重試；若 1.2.0／1.2.1 的舊下載器反覆逾時，需先透過 USB 安裝修正版。相同版本會跳過更新；沒有 OTA 的舊版必須先完成 USB 安裝。
 
 Release 必須有 `firmware.bin`、`firmware.sha256`、`firmware-no-psram.bin`、`firmware-no-psram.sha256`。只發布 app binary，bootloader／partition table 不透過此 OTA 改寫。Release notes 不宜過長，以免完整 API JSON 超過 32 KiB。
 
-## 驗證結果與實板測試計畫
+## 歷史驗證結果與實板測試計畫
+
+以下容量與舊版本範例保留作為歷史記錄。v1.4.4 的當次建置、畫面與功能測試記錄見 [validation.md](validation.md)。v1.4.4 實板驗收應另外確認：提示預選稍後、忽略版本重啟後保留、手動檢查可再次提示、顯示進度期間 GPIO14 長按不休眠，以及新版變更後需重新確認。
 
 本機雙組態 `pio run` 已成功；C++ host tests 共 1,548,636 檢查（包含 OTA 283 項、NVS 72 項），另有 6 組 Python 行事曆測試與 3 組 release guard 測試。Tag 必須與 `version.txt` 一致，不相符的版本會被拒絕。數值與本機產物 SHA 見 [build-results.json](build-results.json)；公開產物以 Release 附帶的 SHA 為準。CI 結果見 [GitHub Actions](https://github.com/jonas7414/salary_clock/actions/workflows/release.yml)。1.2.0 實板紀錄已確認 TLS、版本偵測及部分下載；重試修正、完整更新、斷電與回滾仍需實板驗收。
 

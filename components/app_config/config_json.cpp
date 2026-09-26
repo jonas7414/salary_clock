@@ -23,7 +23,7 @@ bool get_time(cJSON *j,const char *key,uint16_t &minutes) {
     minutes=h*60+m; return true;
 }
 }
-bool config_parse_json(const char *body,size_t length,const AppConfig &current,AppConfig &result,const char **reason,DisplayTheme *theme,DisplaySchedule *schedule) {
+bool config_parse_json(const char *body,size_t length,const AppConfig &current,AppConfig &result,const char **reason,DisplayTheme *theme,DisplaySchedule *schedule,DisplayPreferences *preferences) {
     *reason="Invalid JSON object";
     if (!body || !length || length>2048 || std::memchr(body,0,length)) return false;
     // This API is a flat object. Reject nested containers before cJSON recursion can
@@ -57,6 +57,18 @@ bool config_parse_json(const char *body,size_t length,const AppConfig &current,A
         get_time(j,"work_start",c.work_start) && get_time(j,"lunch_start",c.lunch_start) &&
         get_time(j,"lunch_end",c.lunch_end) && get_time(j,"work_end",c.work_end);
     c.work_days=mask;
+    auto prefs=preferences?*preferences:DisplayPreferences{};
+    uint32_t annual=prefs.anniversary_annual;
+    if ((cJSON_HasObjectItem(j,"page_order") && !string(j,"page_order",prefs.order,sizeof(prefs.order))) ||
+        (cJSON_HasObjectItem(j,"anniversary_name") && !string(j,"anniversary_name",prefs.anniversary_name,sizeof(prefs.anniversary_name))) ||
+        (cJSON_HasObjectItem(j,"anniversary_date") && !string(j,"anniversary_date",prefs.anniversary_date,sizeof(prefs.anniversary_date))) ||
+        (cJSON_HasObjectItem(j,"anniversary_annual") && !number(j,"anniversary_annual",annual,1))) {
+        cJSON_Delete(j); *reason="Invalid page order or anniversary fields"; return false;
+    }
+    prefs.anniversary_annual=annual;
+    if (!display_preferences_valid(prefs)) {
+        cJSON_Delete(j); *reason="Invalid page order, date or anniversary name (1..24 supported characters)"; return false;
+    }
     auto display_hours=schedule?*schedule:DisplaySchedule{};
     if ((cJSON_HasObjectItem(j,"display_on") && !get_time(j,"display_on",display_hours.on_minute)) ||
         (cJSON_HasObjectItem(j,"display_off") && !get_time(j,"display_off",display_hours.off_minute)) ||
@@ -76,5 +88,6 @@ bool config_parse_json(const char *body,size_t length,const AppConfig &current,A
     if (!config_validate(c,true,reason)) return false;
     result=c; if (theme) *theme=static_cast<DisplayTheme>(theme_value);
     if (schedule) *schedule=display_hours;
+    if (preferences) *preferences=prefs;
     *reason=nullptr; return true;
 }

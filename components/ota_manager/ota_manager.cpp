@@ -33,10 +33,11 @@ QueueHandle_t requests;
 OtaStatus status;
 OtaCallback callback;
 void *callback_context;
-enum class Request { Check, Install };
+enum class RequestKind { Check, Install, Ignore };
+struct Request { RequestKind kind{RequestKind::Check}; char approved_version[32]{}; };
 bool ready() {
     const auto bits=xEventGroupGetBits(system_events());
-    return (bits&READY)==READY && !(bits&(SETUP_MODE_BIT|SYSTEM_ERROR_BIT));
+    return (bits&READY)==READY && !(bits&(SETUP_MODE_BIT|SYSTEM_ERROR_BIT|SLEEP_REQUESTED_BIT));
 }
 void publish(OtaState state,const char *message,esp_err_t error=ESP_OK,
              OtaEvent event=OtaEvent::PROGRESS,bool notify=false) {
@@ -281,12 +282,13 @@ bool install(const ota::Release &release,const char *&reason) {
         vTaskDelay(pdMS_TO_TICKS(ota_config::DOWNLOAD_RETRY_DELAY_MS*retry));
     },ota_config::DOWNLOAD_ATTEMPTS);
 }
-void check(bool auto_install) {
+void check(const Request &request,bool manual) {
     if (!system_download_begin(portMAX_DELAY)) return;
     struct DownloadGuard { ~DownloadGuard() { system_download_end(); } } download_guard;
     xSemaphoreTake(status_mutex,portMAX_DELAY);
     status.downloaded_bytes=0; status.total_bytes=0; status.percentage=0; status.http_status=0;
     status.latest_version[0]=0;
+    status.current=false; status.prompt=false;
     xSemaphoreGive(status_mutex);
     ESP_LOGI(TAG,"Current %s; heap free=%lu minimum=%lu",APP_FIRMWARE_VERSION,
         (unsigned long)esp_get_free_heap_size(),(unsigned long)esp_get_minimum_free_heap_size());
@@ -308,11 +310,23 @@ void check(bool auto_install) {
         reason="Invalid firmware version";
     }
     if (ok && ota::compare_versions(latest,current)<=0) {
+        xSemaphoreTake(status_mutex,portMAX_DELAY);
+        status.checked=true; status.current=true;
+        xSemaphoreGive(status_mutex);
         publish(OtaState::IDLE,"Already running this version or newer"); return;
     }
     if (ok) {
+        char ignored[32]{}; app_config_ignored_version(ignored);
+        const bool approved=request.kind==RequestKind::Install && ota_version_approved(request.approved_version,release.version);
+        xSemaphoreTake(status_mutex,portMAX_DELAY);
+        status.checked=true; status.choice=1;
+        const bool can_prompt=!(xEventGroupGetBits(system_events())&(SETUP_MODE_BIT|SLEEP_REQUESTED_BIT|SYSTEM_ERROR_BIT));
+        status.prompt=!approved && can_prompt && ota_should_prompt(manual,release.version,ignored);
+        status.foreground=approved;
+        xSemaphoreGive(status_mutex);
         publish(OtaState::UPDATE_AVAILABLE,"New stable firmware available");
-        if (!auto_install) return;
+        // Approval applies only to the version the user saw, never to a later release.
+        if (!approved) return;
         if (release.checksum_url[0]) {
             char checksum[257]; uint8_t expected[32]; size_t count=0;
             reason="Release checksum file missing, malformed or disagrees with GitHub digest";
@@ -362,29 +376,33 @@ void probation() {
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
-void wait_ready() {
-    for (;;) {
-        xEventGroupWaitBits(system_events(),READY,pdFALSE,pdTRUE,portMAX_DELAY);
-        if (ready()) return;
-        // Setup/system errors may coexist briefly with old readiness bits.
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-}
 void worker(void *) {
     probation();
-    int64_t first_check=0;
-    bool checked_on_boot=false;
+    BootUpdateCheck boot_check(ota_config::INITIAL_DELAY_US);
     for (;;) {
-        wait_ready();
         const int64_t now=esp_timer_get_time();
-        if (!first_check) first_check=now+ota_config::INITIAL_DELAY_US;
-        const int64_t delay=std::max(int64_t(0),first_check-now);
+        const bool automatic_due=boot_check.due(now,ready());
         Request request{};
-        const bool manual=xQueueReceive(requests,&request,checked_on_boot ? portMAX_DELAY : pdMS_TO_TICKS((delay+999)/1000))==pdTRUE;
-        if (checked_on_boot && !manual) continue;
-        wait_ready(); // Preserve an accepted manual request across a disconnect.
-        check(manual ? request==Request::Install : ota_config::AUTO_INSTALL);
-        checked_on_boot=true;
+        const bool manual=xQueueReceive(requests,&request,boot_check.checked() ? portMAX_DELAY : pdMS_TO_TICKS(250))==pdTRUE;
+        if (!manual) {
+            if (!automatic_due || !ready()) continue;
+            xSemaphoreTake(status_mutex,portMAX_DELAY);
+            if (status.busy || status.foreground || status.prompt) { xSemaphoreGive(status_mutex); continue; }
+            status.busy=true;
+            xSemaphoreGive(status_mutex);
+        }
+        if (request.kind==RequestKind::Ignore) {
+            const auto err=app_config_ignore_version(request.approved_version);
+            xSemaphoreTake(status_mutex,portMAX_DELAY);
+            status.foreground=err!=ESP_OK;
+            xSemaphoreGive(status_mutex);
+            publish(err==ESP_OK?OtaState::UPDATE_AVAILABLE:OtaState::ERROR,
+                err==ESP_OK?"Reminder disabled for this version":"Could not save reminder preference",err);
+        } else if (ready()) {
+            check(request,manual);
+            boot_check.complete();
+        } else publish(OtaState::ERROR,"Connect Wi-Fi and synchronize time before checking",ESP_ERR_INVALID_STATE);
+        xSemaphoreTake(status_mutex,portMAX_DELAY); status.busy=false; xSemaphoreGive(status_mutex);
         ESP_LOGI(TAG,"Heap free=%lu minimum=%lu; stack remaining=%u bytes",
             (unsigned long)esp_get_free_heap_size(),(unsigned long)esp_get_minimum_free_heap_size(),
             (unsigned)uxTaskGetStackHighWaterMark(nullptr));
@@ -393,7 +411,7 @@ void worker(void *) {
 }
 esp_err_t ota_init() {
     if (requests) return ESP_ERR_INVALID_STATE;
-    status_mutex=xSemaphoreCreateMutex(); requests=xQueueCreate(4,sizeof(Request));
+    status_mutex=xSemaphoreCreateMutex(); requests=xQueueCreate(1,sizeof(Request));
     if (!status_mutex || !requests || xTaskCreate(worker,"ota",TASK_STACK_OTA,nullptr,TASK_PRIORITY_OTA,nullptr)!=pdPASS) {
         if (requests) vQueueDelete(requests);
         if (status_mutex) vSemaphoreDelete(status_mutex);
@@ -403,11 +421,42 @@ esp_err_t ota_init() {
     }
     return ESP_OK;
 }
-esp_err_t ota_check_update() {
-    Request r=Request::Check; return requests && xQueueSend(requests,&r,0)==pdTRUE ? ESP_OK : ESP_ERR_INVALID_STATE;
+namespace {
+esp_err_t enqueue(RequestKind kind) {
+    if (!requests || !status_mutex) return ESP_ERR_INVALID_STATE;
+    xSemaphoreTake(status_mutex,portMAX_DELAY);
+    if (!ota_request_allowed(status,kind!=RequestKind::Check)) {
+        xSemaphoreGive(status_mutex); return ESP_ERR_INVALID_STATE;
+    }
+    Request request{}; request.kind=kind;
+    if (kind!=RequestKind::Check) std::strcpy(request.approved_version,status.latest_version);
+    const bool sent=xQueueSend(requests,&request,0)==pdTRUE;
+    if (sent) {
+        status.busy=true; status.foreground=true; status.prompt=false;
+        status.state=OtaState::CHECKING; status.percentage=0;
+        status.downloaded_bytes=status.total_bytes=0;
+    }
+    xSemaphoreGive(status_mutex);
+    return sent?ESP_OK:ESP_ERR_INVALID_STATE;
 }
-esp_err_t ota_start_update() {
-    Request r=Request::Install; return requests && xQueueSend(requests,&r,0)==pdTRUE ? ESP_OK : ESP_ERR_INVALID_STATE;
+}
+esp_err_t ota_check_update() { return enqueue(RequestKind::Check); }
+esp_err_t ota_start_update() { return enqueue(RequestKind::Install); }
+void ota_prompt_next() {
+    if (!status_mutex) return;
+    xSemaphoreTake(status_mutex,portMAX_DELAY);
+    if (status.prompt && !status.busy) status.choice=(status.choice+1)%3;
+    xSemaphoreGive(status_mutex);
+}
+esp_err_t ota_prompt_confirm() {
+    const auto current=ota_get_status();
+    if (current.busy) return ESP_ERR_INVALID_STATE;
+    if (current.prompt && current.choice==0) return ota_start_update();
+    if (current.prompt && current.choice==2) return enqueue(RequestKind::Ignore);
+    if (!status_mutex) return ESP_ERR_INVALID_STATE;
+    xSemaphoreTake(status_mutex,portMAX_DELAY);
+    status.prompt=false; status.foreground=false;
+    xSemaphoreGive(status_mutex); return ESP_OK;
 }
 const char *ota_get_current_version() { return APP_FIRMWARE_VERSION; }
 OtaStatus ota_get_status() {

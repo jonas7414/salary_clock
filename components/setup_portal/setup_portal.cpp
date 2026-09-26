@@ -47,6 +47,11 @@ esp_err_t get_config(httpd_req_t *r) {
     cJSON_AddNumberToObject(j,"display_theme",static_cast<unsigned>(app_config_theme()));
     const auto schedule=app_config_display_schedule();
     add_time(j,"display_on",schedule.on_minute); add_time(j,"display_off",schedule.off_minute);
+    const auto prefs=app_config_display_preferences();
+    cJSON_AddStringToObject(j,"page_order",prefs.order);
+    cJSON_AddStringToObject(j,"anniversary_name",prefs.anniversary_name);
+    cJSON_AddStringToObject(j,"anniversary_date",prefs.anniversary_date);
+    cJSON_AddNumberToObject(j,"anniversary_annual",prefs.anniversary_annual);
     cJSON_AddStringToObject(j,"wifi_ssid",c.wifi_ssid);
     cJSON_AddBoolToObject(j,"has_password",c.wifi_password[0]!=0);
     cJSON_AddNumberToObject(j,"monthly_salary",c.monthly_salary);
@@ -152,8 +157,9 @@ esp_err_t post_config(httpd_req_t *r) {
     AppConfig c{}; const char *reason=nullptr;
     auto theme=app_config_theme();
     auto schedule=app_config_display_schedule();
-    if (!config_parse_json(body,used,app_config_snapshot(),c,&reason,&theme,&schedule)) return error(r,reason);
-    if (app_config_save(c,theme,schedule)!=ESP_OK) return error(r,"Failed to save NVS","500 Internal Server Error");
+    auto prefs=app_config_display_preferences();
+    if (!config_parse_json(body,used,app_config_snapshot(),c,&reason,&theme,&schedule,&prefs)) return error(r,reason);
+    if (app_config_save(c,theme,schedule,prefs)!=ESP_OK) return error(r,"Failed to save NVS","500 Internal Server Error");
     cJSON *reply=cJSON_CreateObject(); cJSON_AddBoolToObject(reply,"saved",true); cJSON_AddBoolToObject(reply,"reboot_required",true);
     return send_json(r,reply);
 }

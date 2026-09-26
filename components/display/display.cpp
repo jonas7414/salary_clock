@@ -1,5 +1,6 @@
 #include "display.h"
 #include "button.h"
+#include "ota_manager.h"
 #include "display_schedule.h"
 #include "ui_renderer.h"
 #include "ui_animation.h"
@@ -129,6 +130,8 @@ void task(void *) {
     UiAnimation animation(esp_random());
     UiModel model{}; model.config=app_config_snapshot(); model.physics=&animation.physics();
     model.theme=app_config_theme();
+    model.preferences=app_config_display_preferences();
+    model.page=model.preferences.order[0]-'0';
     const auto schedule=app_config_display_schedule();
     DisplaySchedulePolicy display_policy;
     bool panel_on=true;
@@ -161,6 +164,7 @@ void task(void *) {
         }
         const float dt=std::clamp(float(frame_start-last_us)/1000000.f,0.f,.05f); last_us=frame_start;
         const auto device=device_snapshot(); model.salary=salary_snapshot(); model.system=system_state();
+        model.ota=ota_get_status();
         const auto bits=xEventGroupGetBits(system_events()); model.synced=bits&TIME_SYNCED_BIT; model.connected=bits&WIFI_CONNECTED_BIT;
         model.associated=bits&WIFI_ASSOCIATED_BIT;
         model.sntp_synced=bits&SNTP_SYNCED_BIT;
@@ -180,13 +184,17 @@ void task(void *) {
         model.free_psram=heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
         model.frame_us=device.frame_us; model.dropped_frames=dropped;
         uint8_t page;
-        while (xQueueReceive(page_events(),&page,0)==pdTRUE) model.page=ui_next_page(model.page,page==255);
+        while (xQueueReceive(page_events(),&page,0)==pdTRUE) {
+            if (!model.ota.prompt && !model.ota.foreground) model.page_position=ui_next_page(model.page_position,page==255);
+        }
+        model.page=model.preferences.order[model.page_position]-'0';
         uint16_t minute=0;
         if (model.synced) {
             timeval wall{}; gettimeofday(&wall,nullptr);
             time_t now=wall.tv_sec; tm local{}; localtime_r(&now,&local);
             model.hundredths=unsigned(wall.tv_usec/10000); model.weekday=unsigned(local.tm_wday);
             model.holiday=holiday_countdown(local);
+            model.anniversary_days=anniversary_days(model.preferences,local);
             minute=local.tm_hour*60+local.tm_min;
             std::strftime(model.date,sizeof(model.date),"%Y/%m/%d",&local);
             std::strftime(model.clock,sizeof(model.clock),"%H:%M:%S",&local);
@@ -202,7 +210,7 @@ void task(void *) {
         // since its original press edge occurred while the intro forced the LCD on.
         const bool pressed=device.button_presses!=last_button_presses || boot.button_wake();
         last_button_presses=device.button_presses;
-        const bool force_on=model.boot_progress<1.f ||
+        const bool force_on=model.boot_progress<1.f || model.ota.prompt || model.ota.foreground ||
             (bits&(SETUP_MODE_BIT|SYSTEM_ERROR_BIT)) || !(bits&CONFIG_READY_BIT);
         const bool visible=display_policy.update(schedule,minute,model.synced,force_on,pressed,model.animation_ms);
         const auto err=update_screen(model,visible,panel_on);
@@ -214,7 +222,7 @@ void task(void *) {
         }
         const uint32_t elapsed=uint32_t(esp_timer_get_time()-frame_start);
         if (elapsed>FRAME_MS*1000U) { ++dropped; wake=xTaskGetTickCount(); }
-        display_publish(elapsed,dropped,!back);
+        display_publish(elapsed,dropped,!back,model.page);
         system_heartbeat(CriticalTask::Display);
         vTaskDelayUntil(&wake,pdMS_TO_TICKS(FRAME_MS));
     }

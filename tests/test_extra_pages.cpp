@@ -20,6 +20,34 @@ void ppm(const std::string &name,const std::vector<uint16_t> &pixels) {
     std::fclose(file);
 }
 int main(int argc,char **argv) {
+    DisplayPreferences prefs{};CHECK(display_preferences_valid(prefs));CHECK(prefs.order[5]=='3');
+    std::strcpy(prefs.anniversary_name,"Our day");std::strcpy(prefs.anniversary_date,"2024-02-29");
+    CHECK(display_preferences_valid(prefs));
+    CHECK(anniversary_days(prefs,local(2025,2,27))==1);
+    CHECK(anniversary_days(prefs,local(2025,2,28))==0);
+    CHECK(anniversary_days(prefs,local(2027,3,1))==365);
+    CHECK(anniversary_days(prefs,local(2028,2,28))==1);
+    CHECK(anniversary_days(prefs,local(2028,2,29))==0);
+    prefs.anniversary_annual=0;CHECK(anniversary_days(prefs,local(2024,3,1))==-1);
+    CHECK(anniversary_days(prefs,local(2024,2,28))==1);
+    std::strcpy(prefs.anniversary_date,"2027-01-01");prefs.anniversary_annual=1;
+    CHECK(anniversary_days(prefs,local(2026,12,31))==1);
+    CHECK(anniversary_days(prefs,local(2026,1,1))==365);
+    for (const char *name:{"\xc0\xaf","\xed\xa0\x80","\xe4\xb8","bad\nname","   ","\xf0\x9f\x98\x80"}) CHECK(!anniversary_name_valid(name));
+    CHECK(ota_should_prompt(false,"1.5.0","1.4.9"));CHECK(!ota_should_prompt(false,"1.5.0","1.5.0"));
+    CHECK(ota_should_prompt(true,"1.5.0","1.5.0"));CHECK(!ota_version_approved("","1.5.0"));
+    CHECK(!ota_version_approved("1.5.0","1.5.1"));CHECK(ota_version_approved("1.5.0","1.5.0"));
+    BootUpdateCheck boot_check(20000000);
+    CHECK(!boot_check.due(0,false));CHECK(!boot_check.due(90000000,false));
+    CHECK(!boot_check.due(100000000,true));CHECK(!boot_check.due(119999999,true));
+    CHECK(!boot_check.due(120000000,false));CHECK(boot_check.due(130000000,true));
+    boot_check.complete();CHECK(boot_check.checked());CHECK(!boot_check.due(999999999,true));
+    CHECK(!boot_check.due(1000000000,false));CHECK(!boot_check.due(1000000001,true));
+    BootUpdateCheck manual_first(20000000);manual_first.complete();CHECK(!manual_first.due(1000000000,true));
+    OtaStatus consent{};CHECK(ota_request_allowed(consent,false));CHECK(!ota_request_allowed(consent,true));
+    consent.state=OtaState::UPDATE_AVAILABLE;CHECK(!ota_request_allowed(consent,true));
+    consent.prompt=true;CHECK(consent.choice==1 && ota_request_allowed(consent,true));
+    consent.busy=true;CHECK(!ota_request_allowed(consent,true) && !ota_request_allowed(consent,false));
     CalendarYear years[2]{};
     for (int i=0;i<2;++i) { years[i].year=2028+i;
         for (int m=1;m<=12;++m) years[i].workdays[m-1]=(1U<<calendar_days_in_month(years[i].year,m))-1; }
@@ -67,6 +95,19 @@ int main(int argc,char **argv) {
             CHECK(full==strip);
             ppm(folder+"/extra_"+std::to_string(theme)+"_"+std::to_string(page)+"_"+std::to_string(state)+".ppm",full);
         }
+    }
+    for (unsigned theme=0;theme<3;++theme) for (unsigned state=0;state<8;++state) {
+        m.theme=static_cast<DisplayTheme>(theme);m.page=4;m.page_position=3;m.ota={};
+        m.preferences=prefs;std::strcpy(m.preferences.anniversary_name,"我們的紀念日");m.anniversary_days=26;
+        if (state>=1 && state<=3) { m.ota.prompt=true;m.ota.choice=state-1;std::strcpy(m.ota.latest_version,"1.4.5"); }
+        if (state>=4) {
+            m.ota.foreground=true;m.ota.state=state==4?OtaState::CHECKING:state==5?OtaState::DOWNLOADING:state==6?OtaState::IDLE:OtaState::ERROR;
+            m.ota.current=state==6;
+            if (state==5) {m.ota.percentage=43;m.ota.downloaded_bytes=1300000;m.ota.total_bytes=3000000;}
+        }
+        std::vector<uint16_t> full(320*170),strip(320*170),guard(320*10+2,0xabcd);ui_render(full.data(),0,170,m);
+        for (int y=0;y<170;y+=10) {ui_render(guard.data()+1,y,10,m);CHECK(guard.front()==0xabcd && guard.back()==0xabcd);std::copy(guard.begin()+1,guard.end()-1,strip.begin()+y*320);}
+        CHECK(full==strip);ppm(folder+"/preferences_"+std::to_string(theme)+"_"+std::to_string(state)+".ppm",full);
     }
     CalendarYear clear[2]{};CHECK(taiwan_calendar_install(clear));
     std::printf("PASS: %u clock/holiday/navigation checks\n",checks);

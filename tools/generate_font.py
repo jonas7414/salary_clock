@@ -21,7 +21,10 @@ def main():
         latin = ImageFont.truetype(str(args.latin_font), size)
         display = ImageFont.truetype(str(args.display_font), size)
         display.set_variation_by_axes([600])
-        for char in chars:
+        # Custom anniversary names use only size 12. Keep the broad CJK coverage
+        # in flash, without multiplying it across the five UI font sizes.
+        custom = {chr(cp) for lo,hi in [(0x3000,0x3100),(0x4e00,0xa000),(0xff01,0xff61)] for cp in range(lo,hi)} if size == 12 else set()
+        for char in sorted(set(chars) | custom):
             font = chinese if ord(char) > 127 else display if size >= 24 else latin
             advance = max(1, round(font.getlength(char)))
             if char.isascii() and char.isdigit():

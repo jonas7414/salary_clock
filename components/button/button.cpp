@@ -1,5 +1,6 @@
 #include "button.h"
 #include "button_logic.h"
+#include "ota_manager.h"
 #include "app_system.h"
 #include "driver/gpio.h"
 #include "driver/rtc_io.h"
@@ -13,12 +14,33 @@ bool suppress_power_press=false;
 void task(void *) {
     ButtonLogic button;
     ButtonLogic previous(true);
+    ButtonLogic confirm(true),select(true);
+    int input_mode=0;
+    bool wait_release=false,check_sent=false;
+    uint32_t released_at=0;
     TickType_t wake=xTaskGetTickCount();
     uint32_t presses=0;
     while (true) {
         const uint32_t now=uint32_t(esp_timer_get_time()/1000);
         uint32_t held=0; bool power_held=false;
-        if (suppress_power_press) {
+        const auto ota=ota_get_status();
+        const int mode=ota.prompt?1:ota.foreground?2:0;
+        const bool power_down=gpio_get_level(GPIO_NUM_14)==0,boot_down=gpio_get_level(GPIO_NUM_0)==0;
+        if (mode!=input_mode) {
+            input_mode=mode; wait_release=true; released_at=0;
+            button=ButtonLogic{}; previous=ButtonLogic(true);
+            confirm=ButtonLogic(true); select=ButtonLogic(true); check_sent=false;
+        }
+        if (wait_release) {
+            if (power_down || boot_down) released_at=0;
+            else if (!released_at) released_at=now;
+            else if (uint32_t(now-released_at)>=30) wait_release=false;
+        } else if (mode) {
+            const auto selected=select.update(boot_down,now);
+            const auto confirmed=confirm.update(power_down,now);
+            if (selected==ButtonAction::Page && mode==1) { ++presses; ota_prompt_next(); }
+            if (confirmed==ButtonAction::Page) { ++presses; ota_prompt_confirm(); }
+        } else if (suppress_power_press) {
             if (gpio_get_level(GPIO_NUM_14)!=0) suppress_power_press=false;
         } else if (!(xEventGroupGetBits(system_events())&SLEEP_REQUESTED_BIT)) {
             const bool was_pressed=button.pressed();
@@ -34,11 +56,16 @@ void task(void *) {
                     ESP_LOGW("button","Command queue full");
             }
         }
-        if (!(xEventGroupGetBits(system_events())&SLEEP_REQUESTED_BIT)) {
+        if (!mode && !wait_release && !(xEventGroupGetBits(system_events())&SLEEP_REQUESTED_BIT)) {
             const bool was_pressed=previous.pressed();
             const auto action=previous.update(gpio_get_level(GPIO_NUM_0)==0,now);
             if (!was_pressed && previous.pressed()) ++presses;
             if (action==ButtonAction::Page) { const uint8_t page=255; xQueueSend(page_events(),&page,0); }
+            if (!previous.pressed()) check_sent=false;
+            if (!check_sent && previous.held_ms(now)>=2000 && device_snapshot().active_page==3 &&
+                !(xEventGroupGetBits(system_events())&SETUP_MODE_BIT)) {
+                check_sent=true; ota_check_update();
+            }
         }
         button_publish(held,presses,power_held);
         system_heartbeat(CriticalTask::Button);

@@ -48,9 +48,9 @@ void button_publish(uint32_t t,uint32_t presses,bool power_held) {
     xSemaphoreTake(mutex,portMAX_DELAY); device.button_held_ms=t; device.button_presses=presses;
     device.power_button_held=power_held; xSemaphoreGive(mutex);
 }
-void display_publish(uint32_t t,uint32_t d,bool p) {
+void display_publish(uint32_t t,uint32_t d,bool p,unsigned page) {
     xSemaphoreTake(mutex,portMAX_DELAY); device.frame_us=t; device.dropped_frames=d;
-    device.partial_rendering=p; xSemaphoreGive(mutex);
+    device.partial_rendering=p; device.active_page=page; xSemaphoreGive(mutex);
 }
 void time_wait_publish(bool e) { xSemaphoreTake(mutex,portMAX_DELAY); device.sntp_wait_expired=e; xSemaphoreGive(mutex); }
 void rtc_publish(const RtcStatus &s) { xSemaphoreTake(mutex,portMAX_DELAY); device.rtc=s; xSemaphoreGive(mutex); }

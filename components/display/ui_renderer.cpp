@@ -337,8 +337,8 @@ void header(Canvas &c,const UiModel &m) {
 }
 void footer(Canvas &c,const UiModel &m) {
     for (unsigned i=0;i<UI_PAGE_COUNT;++i) {
-        if (m.theme==DisplayTheme::Classic) c.ellipse(272+i*7,160,2,2,i==m.page ? GOLD : LINE);
-        else c.rect(269+i*7,158,5,4,i==m.page?GOLD:LINE);
+        if (m.theme==DisplayTheme::Classic) c.ellipse(272+i*7,160,2,2,i==m.page_position ? GOLD : LINE);
+        else c.rect(269+i*7,158,5,4,i==m.page_position?GOLD:LINE);
     }
 }
 void quiet_cloud(Canvas &c,int x,int y,uint32_t milliseconds) {
@@ -358,8 +358,16 @@ void clock_page(Canvas &c,const UiModel &m) {
     const char *week[]={"星期日","星期一","星期二","星期三","星期四","星期五","星期六"};
     char line[64]; std::snprintf(line,sizeof(line),"%s  %s",m.date,week[m.weekday%7]);
     c.center(160,113,line,16,INK);
-    c.text(24,143,"每一刻都值得",12,MUTED);
-    quiet_cloud(c,281,140,m.animation_ms);
+    if (m.preferences.anniversary_name[0]) {
+        c.text(24,141,m.preferences.anniversary_name,12,GOLD,170);
+        char countdown[40];
+        if (m.anniversary_days==0) std::snprintf(countdown,sizeof(countdown),"就是今天!");
+        else std::snprintf(countdown,sizeof(countdown),m.anniversary_days>0?"還有 %d 天":"已經 %d 天",std::abs(m.anniversary_days));
+        c.text(296-Canvas::width(countdown,12),141,countdown,12,INK);
+    } else {
+        c.text(24,143,"每一刻都值得",12,MUTED);
+        quiet_cloud(c,281,140,m.animation_ms);
+    }
 }
 void holiday_page(Canvas &c,const UiModel &m) {
     const auto &h=m.holiday; char text[80];
@@ -519,10 +527,52 @@ void rtc_sync(Canvas &c,const UiModel &m) {
     c.clip();
 }
 }
+namespace {
+void update_dialog(Canvas &c,const UiModel &m) {
+    const auto &o=m.ota;
+    c.rect(0,0,320,170,BG,12);
+    c.rect(14,20,292,132,PANEL); c.rect(14,20,292,2,GOLD);
+    char line[80];
+    if (o.prompt) {
+        c.text(28,31,"發現新韌體",16,INK);
+        std::snprintf(line,sizeof(line),"%s  >  %s",m.firmware,o.latest_version);
+        c.text(28,56,line,12,MUTED,264);
+        c.text(28,75,"要現在更新嗎?",12,INK);
+        const char *choices[]={"立即更新","稍後","此版本不再提醒"};
+        const int x[]={24,103,163},w[]={75,56,133};
+        for (unsigned i=0;i<3;++i) {
+            c.rect(x[i],98,w[i],25,i==o.choice?GOLD:LINE);
+            c.center(x[i]+w[i]/2,104,choices[i],12,i==o.choice?BG:INK);
+        }
+        c.center(160,133,"BOOT 選擇 / GPIO14 確認",10,MUTED);
+        return;
+    }
+    const bool done=o.state==OtaState::IDLE && o.current;
+    const bool failed=o.state==OtaState::ERROR;
+    const char *title=failed?"更新未完成":done?"已是最新版本":
+        o.state==OtaState::DOWNLOADING?"韌體更新中":o.state==OtaState::VERIFYING?"正在驗證韌體":
+        o.state==OtaState::READY_TO_REBOOT?"更新完成，重新開機":"正在檢查更新";
+    c.text(28,34,title,16,INK);
+    if (failed || done) {
+        c.text(28,68,done?"目前韌體不需要更新":"請確認網路，稍後可重新檢查",12,MUTED);
+        if (failed && o.http_status) { std::snprintf(line,sizeof(line),"HTTP %d",o.http_status); c.text(28,91,line,12,GOLD); }
+        c.center(160,126,"GPIO14 返回",12,GOLD);
+    } else {
+        c.text(28,65,o.state==OtaState::CHECKING?"請稍候，正在連線確認":"請保持電源與網路連線",12,MUTED);
+        c.rect(27,90,266,14,MUTED); c.rect(28,91,264,12,LINE);
+        c.rect(28,91,int(264*std::min(o.percentage,100U)/100),12,GOLD);
+        if (o.total_bytes) std::snprintf(line,sizeof(line),"%u%%   %lu / %lu KB",o.percentage,
+            (unsigned long)(o.downloaded_bytes/1024),(unsigned long)(o.total_bytes/1024));
+        else std::snprintf(line,sizeof(line),"等待伺服器回應...");
+        c.center(160,117,line,12,INK);
+    }
+}
+}
 void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
     const auto theme=display_theme_valid(static_cast<uint32_t>(m.theme))?m.theme:DisplayTheme::Classic;
     Canvas c(pixels,offset,rows,theme); c.rect(0,0,320,170,BG);
     frame(c,m);
+    if (m.ota.foreground) { update_dialog(c,m); return; }
     if (m.boot_progress<1.f && m.system!=SYSTEM_ERROR && m.held_ms<500) {
         boot_scene(c,m); return;
     }
@@ -546,7 +596,7 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
             c.text(14,112,"Wi-Fi connected / SNTP pending",12,MUTED);
             c.text(14,141,m.sntp_wait_expired?"同步尚未成功，請檢查網路":"時間同步後開始計算",12,MUTED);
         }
-    } else if (m.salary.work_state==WORK_STATE_NO_CALENDAR && m.page<4) {
+    } else if (m.salary.work_state==WORK_STATE_NO_CALENDAR && m.page<3) {
         c.text(14,42,"行事曆待更新",24,GOLD);
         c.text(14,81,"此年度尚未收錄，暫停薪資計算",16,INK);
         c.text(14,110,"連上網路後自動取得行事曆",12,MUTED);
@@ -615,9 +665,11 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
             std::snprintf(buf,sizeof(buf),"SNTP %s   IDF %s",m.sntp_synced?"SYNCED":"WAITING",m.idf);c.text(12,82,buf,10,INK);
             std::snprintf(buf,sizeof(buf),"FW %s   Config v%lu   Up %lus",m.firmware,static_cast<unsigned long>(m.config.version),static_cast<unsigned long>(m.uptime));c.text(12,95,buf,10,INK);
             std::snprintf(buf,sizeof(buf),"Heap %luK   PSRAM %luK   %s",static_cast<unsigned long>(m.free_heap/1024),static_cast<unsigned long>(m.free_psram/1024),m.partial?"PARTIAL":"DOUBLE");c.text(12,108,buf,10,INK);
-            std::snprintf(buf,sizeof(buf),"Frame %luus   Missed %lu",static_cast<unsigned long>(m.frame_us),static_cast<unsigned long>(m.dropped_frames));c.text(12,121,buf,10,MUTED);
+            const char *update=m.ota.busy?"正在檢查更新":m.ota.state==OtaState::ERROR?"檢查失敗，請重試":
+                m.ota.current?"已是最新版本":m.ota.state==OtaState::UPDATE_AVAILABLE?"有新版本可更新":"尚未檢查更新";
+            c.text(12,120,update,12,GREEN);
             battery_info(c,m.battery);
-            c.text(12,152,"2 clicks: Setup / Hold 5s: Sleep",10,GOLD);
+            c.text(12,151,"BOOT 長按 2 秒：檢查更新",10,GOLD);
         }
         footer(c,m);
         if (m.page<4) schedule_transition(c,m);
@@ -629,4 +681,5 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
         std::snprintf(buf,sizeof(buf),"%lu",static_cast<unsigned long>(m.held_ms>=5000 ? 0 : (5000-m.held_ms+999)/1000));
         c.center(160,78,buf,32,GOLD);
     }
+    if (m.ota.prompt) update_dialog(c,m);
 }

@@ -66,5 +66,19 @@ int main(){
     CHECK(!parse_schedule(replace(body,"\"config_version\":1","\"display_on\":\"08:00\",\"display_on\":\"09:00\",\"config_version\":1")));
     CHECK(!parse_schedule(replace(with_times("\"08:00\"","\"19:00\""),"Office","")));
     CHECK(schedule.on_minute==0 && schedule.off_minute==0); // No mutation on other validation errors.
-    std::printf("PASS: %u JSON/API settings checks (types, ranges, schedules, duplicates, version, credentials, oversized bodies)\n",checks);
+    DisplayPreferences prefs{};
+    auto parse_prefs=[&](const std::string &extra){const auto s=replace(body,"\"config_version\":1",extra+",\"config_version\":1");return config_parse_json(s.data(),s.size(),current,result,&reason,&theme,&schedule,&prefs);};
+    CHECK(parse_prefs("\"page_order\":\"450123\",\"anniversary_name\":\"Our day\",\"anniversary_date\":\"2024-02-29\",\"anniversary_annual\":1"));
+    CHECK(std::strcmp(prefs.order,"450123")==0 && std::strcmp(prefs.anniversary_date,"2024-02-29")==0);
+    CHECK(config_parse_json(body.data(),body.size(),current,result,&reason,&theme,&schedule,&prefs));
+    CHECK(std::strcmp(prefs.order,"450123")==0); // Missing fields preserve the preference.
+    for (const auto field:{"\"page_order\":\"001234\"","\"page_order\":\"0123456\"","\"page_order\":\"01234\"",
+        "\"page_order\":[0,1,2,4,5,3]","\"anniversary_date\":\"2025-02-29\"","\"anniversary_date\":\"2024-04-31\"",
+        "\"anniversary_name\":\"\"","\"anniversary_annual\":2","\"anniversary_name\":\"\\ud83d\\ude00\"",
+        "\"anniversary_name\":\"bad\\nname\"","\"anniversary_name\":\"                         \""}) {
+        const auto before=prefs; CHECK(!parse_prefs(field)); CHECK(std::memcmp(&prefs,&before,sizeof(prefs))==0);
+    }
+    CHECK(parse_prefs("\"anniversary_name\":\"\\u6211\\u5011\\u7684\\u7d00\\u5ff5\\u65e5\""));
+    CHECK(parse_prefs("\"anniversary_name\":\"\",\"anniversary_date\":\"\""));
+    std::printf("PASS: %u JSON/API settings checks (types, ranges, schedules, duplicates, version, credentials, oversized bodies, preferences)\n",checks);
 }

@@ -3,10 +3,12 @@
 #include "battery_status.h"
 #include "coin_physics.h"
 #include "holiday_countdown.h"
+#include "display_preferences.h"
+#include "ota_status.h"
 #include <cstddef>
 #include <cstdint>
 constexpr int SCREEN_WIDTH=320, SCREEN_HEIGHT=170;
-constexpr unsigned UI_PAGE_COUNT=6;
+constexpr unsigned UI_PAGE_COUNT=DISPLAY_PAGE_COUNT;
 constexpr unsigned ui_next_page(unsigned page,bool previous) {
     return (page%UI_PAGE_COUNT+(previous ? UI_PAGE_COUNT-1 : 1))%UI_PAGE_COUNT;
 }
@@ -17,9 +19,13 @@ struct UiModel {
     RtcStatus rtc{};
     BatteryStatus battery{};
     HolidayCountdown holiday{};
+    DisplayPreferences preferences{};
+    OtaStatus ota{};
+    int anniversary_days{};
     unsigned hundredths{},weekday{};
     SystemState system{SYSTEM_BOOTING};
     unsigned page{};
+    unsigned page_position{};
     char date[16]{"----/--/--"};
     char clock[16]{"--:--:--"};
     char ssid[33]{}, ip[16]{}, ap_ssid[33]{};

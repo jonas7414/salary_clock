@@ -38,6 +38,8 @@ struct AppConfig {
     char timezone[40];
 };
 struct SalaryStatus {
+    double job_earned_money{};
+    bool job_total_available{};
     time_t timestamp{};
     double earned_money{}, remaining_money{}, daily_salary{}, salary_per_second{};
     uint32_t worked_seconds{}, remaining_work_seconds{}, daily_work_seconds{};
@@ -53,7 +55,8 @@ const char *timezone_posix(const char *name);
 uint32_t hm_to_seconds(uint8_t hour, uint8_t minute);
 // Returns -1 if the requested government calendar month is not bundled.
 int calculate_work_days_in_month(int year, int month);
-SalaryStatus calculate_salary(const AppConfig &config, const tm &local, time_t now, bool synced);
+SalaryStatus calculate_salary(const AppConfig &config, const tm &local, time_t now, bool synced,
+                              const char *job_start_date="2026-08-01");
 uint32_t config_checksum(const AppConfig &config);
 
 // RAM-only schema upgrade hook. Never rewrites persistent data during boot probation.

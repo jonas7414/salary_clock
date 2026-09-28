@@ -43,7 +43,18 @@ esp_err_t app_config_init(bool *configured) {
     DisplaySchedule schedule{}; size_t schedule_size=sizeof(schedule);
     const auto schedule_error=nvs_get_blob(handle,"display_hours",&schedule,&schedule_size);
     DisplayPreferences preferences{}; size_t preferences_size=sizeof(preferences);
-    const auto preferences_error=nvs_get_blob(handle,"display_prefs",&preferences,&preferences_size);
+    auto preferences_error=nvs_get_blob(handle,"display_prefs2",&preferences,&preferences_size);
+    if (preferences_error==ESP_ERR_NVS_NOT_FOUND) {
+        LegacyDisplayPreferences old{}; size_t old_size=sizeof(old);
+        if (nvs_get_blob(handle,"display_prefs",&old,&old_size)==ESP_OK && old_size==sizeof(old) && !old.order[6]) {
+            preferences.version=old.version;
+            std::memcpy(preferences.order,old.order,6); preferences.order[6]='6'; preferences.order[7]=0;
+            std::memcpy(preferences.anniversary_name,old.anniversary_name,sizeof(old.anniversary_name));
+            std::memcpy(preferences.anniversary_date,old.anniversary_date,sizeof(old.anniversary_date));
+            preferences.anniversary_annual=old.anniversary_annual;
+            preferences_error=ESP_OK; preferences_size=sizeof(preferences);
+        }
+    }
     char ignored[32]{}; size_t ignored_size=sizeof(ignored);
     if (nvs_get_blob(handle,"ota_ignored",ignored,&ignored_size)==ESP_OK &&
         ignored_size==sizeof(ignored) && std::memchr(ignored,0,sizeof(ignored)))
@@ -116,7 +127,7 @@ esp_err_t app_config_save(const AppConfig &c,DisplayTheme theme,const DisplaySch
         const uint32_t saved_theme=static_cast<uint32_t>(theme);
         if (err == ESP_OK) err=nvs_set_blob(h,"theme",&saved_theme,sizeof(saved_theme));
         if (err == ESP_OK) err=nvs_set_blob(h,"display_hours",&schedule,sizeof(schedule));
-        if (err == ESP_OK) err=nvs_set_blob(h,"display_prefs",&preferences,sizeof(preferences));
+        if (err == ESP_OK) err=nvs_set_blob(h,"display_prefs2",&preferences,sizeof(preferences));
         if (err == ESP_OK) err=nvs_commit(h);
         nvs_close(h);
     }

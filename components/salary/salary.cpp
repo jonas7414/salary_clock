@@ -11,7 +11,8 @@ void task(void *) {
         const bool synced=xEventGroupGetBits(system_events()) & TIME_SYNCED_BIT;
         const time_t now=time(nullptr); tm local{};
         if (synced) localtime_r(&now,&local);
-        const auto status=calculate_salary(app_config_snapshot(),local,now,synced);
+        const auto preferences=app_config_display_preferences();
+        const auto status=calculate_salary(app_config_snapshot(),local,now,synced,preferences.job_start_date);
         salary_publish(status);
         system_heartbeat(CriticalTask::Salary);
         if (status.date_key && status.date_key != last_date) {

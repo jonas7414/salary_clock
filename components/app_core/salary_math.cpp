@@ -1,5 +1,6 @@
 #include "app_types.h"
 #include "taiwan_calendar.h"
+#include "display_preferences.h"
 #include <algorithm>
 
 static int days_in_month(int y, int m) {
@@ -16,7 +17,35 @@ int calculate_work_days_in_month(int y, int m) {
     uint32_t days=0;
     return taiwan_calendar_month(y,m,days) ? count_workdays(days) : -1;
 }
-SalaryStatus calculate_salary(const AppConfig &c, const tm &t, time_t now, bool synced) {
+static bool job_total(const AppConfig &c,const tm &t,const char *start,double &total) {
+    int sy,sm,sd;
+    if (!anniversary_date_parts(start,sy,sm,sd)) return false;
+    const int y=t.tm_year+1900,m=t.tm_mon+1,d=t.tm_mday;
+    if (sy*10000+sm*100+sd>y*10000+m*100+d) return true;
+    const unsigned daily=(c.lunch_start-c.work_start+c.work_end-c.lunch_end)*60U;
+    for (int yy=sy,mm=sm;yy<y || (yy==y && mm<=m);) {
+        uint32_t mask=0;
+        if (!taiwan_calendar_month(yy,mm,mask)) return false;
+        const int count=count_workdays(mask);
+        if (count) {
+            const int first=yy==sy && mm==sm?sd:1;
+            const int last=yy==y && mm==m?d:days_in_month(yy,mm);
+            const double rate=double(c.monthly_salary)/count/daily;
+            for (int day=first;day<=last;++day) if (mask&(1U<<(day-1))) {
+                unsigned seconds=daily;
+                if (yy==y && mm==m && day==d) {
+                    const int now=t.tm_hour*3600+t.tm_min*60+t.tm_sec;
+                    seconds=std::clamp(now-int(c.work_start)*60,0,int(c.lunch_start-c.work_start)*60)
+                           +std::clamp(now-int(c.lunch_end)*60,0,int(c.work_end-c.lunch_end)*60);
+                }
+                total+=seconds*rate;
+            }
+        }
+        if (++mm>12) { mm=1; ++yy; }
+    }
+    return true;
+}
+SalaryStatus calculate_salary(const AppConfig &c, const tm &t, time_t now, bool synced,const char *job_start_date) {
     SalaryStatus s{};
     s.timestamp = now;
     if (!synced || !config_validate(c,false)) return s;
@@ -25,6 +54,8 @@ SalaryStatus calculate_salary(const AppConfig &c, const tm &t, time_t now, bool 
         t.tm_hour < 0 || t.tm_hour > 23 || t.tm_min < 0 || t.tm_min > 59 ||
         t.tm_sec < 0 || t.tm_sec > 60) return s;
     s.date_key = y * 10000 + m * 100 + d;
+    s.job_total_available=job_total(c,t,job_start_date,s.job_earned_money);
+    if (!s.job_total_available) s.job_earned_money=0;
     uint32_t workdays=0;
     if (!taiwan_calendar_month(y,m,workdays)) {
         s.work_state=WORK_STATE_NO_CALENDAR;

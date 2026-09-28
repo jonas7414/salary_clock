@@ -337,8 +337,8 @@ void header(Canvas &c,const UiModel &m) {
 }
 void footer(Canvas &c,const UiModel &m) {
     for (unsigned i=0;i<UI_PAGE_COUNT;++i) {
-        if (m.theme==DisplayTheme::Classic) c.ellipse(272+i*7,160,2,2,i==m.page_position ? GOLD : LINE);
-        else c.rect(269+i*7,158,5,4,i==m.page_position?GOLD:LINE);
+        if (m.theme==DisplayTheme::Classic) c.ellipse(265+i*7,160,2,2,i==m.page_position ? GOLD : LINE);
+        else c.rect(262+i*7,158,5,4,i==m.page_position?GOLD:LINE);
     }
 }
 void quiet_cloud(Canvas &c,int x,int y,uint32_t milliseconds) {
@@ -365,7 +365,6 @@ void clock_page(Canvas &c,const UiModel &m) {
         else std::snprintf(countdown,sizeof(countdown),m.anniversary_days>0?"還有 %d 天":"已經 %d 天",std::abs(m.anniversary_days));
         c.text(296-Canvas::width(countdown,12),141,countdown,12,INK);
     } else {
-        c.text(24,143,"每一刻都值得",12,MUTED);
         quiet_cloud(c,281,140,m.animation_ms);
     }
 }
@@ -544,7 +543,7 @@ void update_dialog(Canvas &c,const UiModel &m) {
             c.rect(x[i],98,w[i],25,i==o.choice?GOLD:LINE);
             c.center(x[i]+w[i]/2,104,choices[i],12,i==o.choice?BG:INK);
         }
-        c.center(160,133,"BOOT 選擇 / GPIO14 確認",10,MUTED);
+        c.center(160,133,"上方按鈕 選擇 / 下方按鈕 確認",10,MUTED);
         return;
     }
     const bool done=o.state==OtaState::IDLE && o.current;
@@ -556,7 +555,7 @@ void update_dialog(Canvas &c,const UiModel &m) {
     if (failed || done) {
         c.text(28,68,done?"目前韌體不需要更新":"請確認網路，稍後可重新檢查",12,MUTED);
         if (failed && o.http_status) { std::snprintf(line,sizeof(line),"HTTP %d",o.http_status); c.text(28,91,line,12,GOLD); }
-        c.center(160,126,"GPIO14 返回",12,GOLD);
+        c.center(160,126,"下方按鈕 返回",12,GOLD);
     } else {
         c.text(28,65,o.state==OtaState::CHECKING?"請稍候，正在連線確認":"請保持電源與網路連線",12,MUTED);
         c.rect(27,90,266,14,MUTED); c.rect(28,91,264,12,LINE);
@@ -633,7 +632,7 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
             c.text(12,63,"今天還能偷 / NT$",12,MUTED); money(c,12,83,m.salary.remaining_money,188);
             c.rect(206,38,1,100,LINE);
             c.text(220,48,"剩餘工時",16,INK); duration(buf,sizeof(buf),m.salary.remaining_work_seconds);
-            c.text(218,80,buf,16,GOLD);c.text(220,109,"已排除午休",12,MUTED);
+            c.text(218,80,buf,16,GOLD);
             c.text(12,142,work_label(m.salary.work_state),12,GREEN);
         } else if (m.page==2) {
             c.text(12,35,"本月戰績",16,INK);
@@ -652,6 +651,13 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
                 const int size=Canvas::width(buf,12)>132 ? 10 : 12;
                 c.text(179,53+i*29,buf,size,INK,132);
             }
+        } else if (m.page==6) {
+            c.text(12,37,"這份工撈多少",16,INK);
+            c.text(12,63,"到職至今 / NT$",12,MUTED);
+            if (m.salary.job_total_available) money(c,12,84,m.salary.job_earned_money,296);
+            else c.text(12,87,"缺少歷史行事曆",16,GOLD);
+            c.text(12,126,"到職日",12,MUTED);
+            c.text(64,126,m.preferences.job_start_date,12,INK);
         } else if (m.page==4) {
             clock_page(c,m);
         } else if (m.page==5) {
@@ -669,7 +675,7 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
                 m.ota.current?"已是最新版本":m.ota.state==OtaState::UPDATE_AVAILABLE?"有新版本可更新":"尚未檢查更新";
             c.text(12,120,update,12,GREEN);
             battery_info(c,m.battery);
-            c.text(12,151,"BOOT 長按 2 秒：檢查更新",10,GOLD);
+            c.text(12,151,"上方按鈕 長按 2 秒：檢查更新",10,GOLD);
         }
         footer(c,m);
         if (m.page<4) schedule_transition(c,m);

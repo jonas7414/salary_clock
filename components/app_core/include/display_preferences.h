@@ -3,13 +3,21 @@
 #include <cstring>
 #include <ctime>
 
-constexpr unsigned DISPLAY_PAGE_COUNT=6;
-struct DisplayPreferences {
+constexpr unsigned DISPLAY_PAGE_COUNT=7;
+struct LegacyDisplayPreferences {
     uint8_t version{1};
-    char order[7]{"012453"}; // stable page IDs; system information is last by default
+    char order[7]{"012453"};
     char anniversary_name[73]{};
     char anniversary_date[11]{};
     uint8_t anniversary_annual{1};
+};
+struct DisplayPreferences {
+    uint8_t version{1};
+    char order[8]{"0126453"}; // stable page IDs; system information is last by default
+    char anniversary_name[73]{};
+    char anniversary_date[11]{};
+    uint8_t anniversary_annual{1};
+    char job_start_date[11]{"2026-08-01"};
 };
 inline bool leap_year(int y) { return y%4==0 && (y%100!=0 || y%400==0); }
 inline int month_days(int y,int m) {
@@ -48,15 +56,18 @@ inline bool anniversary_name_valid(const char *s) {
     return count==0 || visible;
 }
 inline bool display_preferences_valid(const DisplayPreferences &p) {
-    if (p.version!=1 || p.order[6] || p.anniversary_annual>1 ||
+    if (p.version!=1 || p.order[7] || p.anniversary_annual>1 ||
+        !std::memchr(p.job_start_date,0,sizeof(p.job_start_date)) ||
         !std::memchr(p.anniversary_name,0,sizeof(p.anniversary_name)) ||
         !std::memchr(p.anniversary_date,0,sizeof(p.anniversary_date))) return false;
     unsigned mask=0;
     for (unsigned i=0;i<DISPLAY_PAGE_COUNT;++i) {
-        if (p.order[i]<'0' || p.order[i]>'5') return false;
+        if (p.order[i]<'0' || p.order[i]>'6') return false;
         mask|=1U<<(p.order[i]-'0');
     }
-    if (mask!=63 || !anniversary_name_valid(p.anniversary_name)) return false;
+    int sy,sm,sd;
+    if (mask!=127 || !anniversary_name_valid(p.anniversary_name) ||
+        !anniversary_date_parts(p.job_start_date,sy,sm,sd)) return false;
     if (!p.anniversary_name[0]) return !p.anniversary_date[0];
     int y,m,d; return anniversary_date_parts(p.anniversary_date,y,m,d);
 }

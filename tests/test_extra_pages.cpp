@@ -20,7 +20,7 @@ void ppm(const std::string &name,const std::vector<uint16_t> &pixels) {
     std::fclose(file);
 }
 int main(int argc,char **argv) {
-    DisplayPreferences prefs{};CHECK(display_preferences_valid(prefs));CHECK(prefs.order[5]=='3');
+    DisplayPreferences prefs{};CHECK(display_preferences_valid(prefs));CHECK(prefs.order[6]=='3');
     std::strcpy(prefs.anniversary_name,"Our day");std::strcpy(prefs.anniversary_date,"2024-02-29");
     CHECK(display_preferences_valid(prefs));
     CHECK(anniversary_days(prefs,local(2025,2,27))==1);
@@ -66,8 +66,8 @@ int main(int argc,char **argv) {
     CHECK(!holiday_countdown(local(2028,2,30)).available);
     off(years[1],12,31);CHECK(taiwan_calendar_install(years));
     h=holiday_countdown(local(2029,12,30));CHECK(h.available && !h.holiday_days); // Missing next-year boundary.
-    CHECK(ui_next_page(0,true)==5 && ui_next_page(5,false)==0);
-    for (unsigned page=0;page<6;++page) CHECK(ui_next_page(ui_next_page(page,false),true)==page);
+    CHECK(ui_next_page(0,true)==6 && ui_next_page(6,false)==0);
+    for (unsigned page=0;page<7;++page) CHECK(ui_next_page(ui_next_page(page,false),true)==page);
     ButtonLogic previous(true);
     previous.update(true,0); previous.update(true,30);previous.update(false,100);
     CHECK(previous.update(false,130)==ButtonAction::Page);
@@ -78,7 +78,7 @@ int main(int argc,char **argv) {
     UiModel m{};m.synced=true;m.system=SYSTEM_RUNNING;m.salary.work_state=WORK_STATE_WORKING_MORNING;
     std::strcpy(m.clock,"16:32:08");std::strcpy(m.date,"2028/02/26");m.weekday=6;m.hundredths=36;
     std::strcpy(m.firmware,"1.4.3");m.holiday=holiday_countdown(local(2028,2,26,16,32));
-    for (unsigned theme=0;theme<3;++theme) for (unsigned page=4;page<6;++page) {
+    for (unsigned theme=0;theme<3;++theme) for (unsigned page=4;page<7;++page) {
         m.theme=static_cast<DisplayTheme>(theme);m.page=page;
         for (unsigned state=0;state<4;++state) {
             std::strcpy(m.date,state==1 ? "2028/02/29" : "2028/02/26");m.weekday=state==1 ? 2 : 6;

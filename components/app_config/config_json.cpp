@@ -60,6 +60,7 @@ bool config_parse_json(const char *body,size_t length,const AppConfig &current,A
     auto prefs=preferences?*preferences:DisplayPreferences{};
     uint32_t annual=prefs.anniversary_annual;
     if ((cJSON_HasObjectItem(j,"page_order") && !string(j,"page_order",prefs.order,sizeof(prefs.order))) ||
+        (cJSON_HasObjectItem(j,"job_start_date") && !string(j,"job_start_date",prefs.job_start_date,sizeof(prefs.job_start_date))) ||
         (cJSON_HasObjectItem(j,"anniversary_name") && !string(j,"anniversary_name",prefs.anniversary_name,sizeof(prefs.anniversary_name))) ||
         (cJSON_HasObjectItem(j,"anniversary_date") && !string(j,"anniversary_date",prefs.anniversary_date,sizeof(prefs.anniversary_date))) ||
         (cJSON_HasObjectItem(j,"anniversary_annual") && !number(j,"anniversary_annual",annual,1))) {

@@ -28,6 +28,12 @@ def main():
     env["ZIG_GLOBAL_CACHE_DIR"]=str(ROOT/".tools"/"zig-cache")
     env["ZIG_LOCAL_CACHE_DIR"]=str(ROOT/".tools"/"zig-local")
     compiler=[args.zig,"c++"] if args.zig else [args.cxx]
+    job_binary=OUT/("test_job_salary.exe" if os.name=="nt" else "test_job_salary")
+    subprocess.run(compiler+["-std=c++17","-O2","-Wall","-Wextra","-Werror",
+        "-Icomponents/app_core/include","-Icomponents/display/include","-Icomponents/coin_physics/include",
+        "tests/test_job_salary.cpp","components/app_core/app_types.cpp","components/app_core/salary_math.cpp",
+        "components/app_core/taiwan_calendar.cpp","components/display/ui_renderer.cpp","-o",str(job_binary)],cwd=ROOT,env=env,check=True)
+    subprocess.run([str(job_binary)],cwd=ROOT,env=env,check=True)
     calendar_binary=OUT/("test_calendar_download.exe" if os.name=="nt" else "test_calendar_download")
     subprocess.run(compiler+["-std=c++17","-O2","-Wall","-Wextra","-Werror","-pthread",
         "-Icomponents/app_core/include","-Icomponents/calendar_manager/include","tests/test_calendar_download.cpp",

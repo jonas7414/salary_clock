@@ -49,6 +49,7 @@ esp_err_t get_config(httpd_req_t *r) {
     add_time(j,"display_on",schedule.on_minute); add_time(j,"display_off",schedule.off_minute);
     const auto prefs=app_config_display_preferences();
     cJSON_AddStringToObject(j,"page_order",prefs.order);
+    cJSON_AddStringToObject(j,"job_start_date",prefs.job_start_date);
     cJSON_AddStringToObject(j,"anniversary_name",prefs.anniversary_name);
     cJSON_AddStringToObject(j,"anniversary_date",prefs.anniversary_date);
     cJSON_AddNumberToObject(j,"anniversary_annual",prefs.anniversary_annual);

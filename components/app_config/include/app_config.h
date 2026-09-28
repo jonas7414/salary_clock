@@ -9,6 +9,8 @@ DisplayTheme app_config_theme();
 DisplaySchedule app_config_display_schedule();
 DisplayPreferences app_config_display_preferences();
 NtpServer app_config_ntp_server();
+uint32_t app_config_brightness();
+esp_err_t app_config_save_brightness(uint32_t value);
 void app_config_ignored_version(char (&version)[32]);
 esp_err_t app_config_ignore_version(const char *version);
 esp_err_t app_config_save(const AppConfig &config);

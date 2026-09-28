@@ -3,7 +3,7 @@
 #include <cstring>
 #include <ctime>
 
-constexpr unsigned DISPLAY_PAGE_COUNT=7;
+constexpr unsigned DISPLAY_PAGE_COUNT=8;
 struct LegacyDisplayPreferences {
     uint8_t version{1};
     char order[7]{"012453"};
@@ -25,9 +25,28 @@ struct Anniversary {
     char date[11]{};
     uint8_t annual{1};
 };
-struct DisplayPreferences : DisplayPreferencesV2 {
+struct DisplayPreferencesV3 : DisplayPreferencesV2 {
     Anniversary extra_anniversaries[MAX_ANNIVERSARIES-1]{};
 };
+struct DisplayPreferences {
+    uint8_t version{1};
+    char order[9]{"01264573"};
+    char anniversary_name[73]{};
+    char anniversary_date[11]{};
+    uint8_t anniversary_annual{1};
+    char job_start_date[11]{"2026-08-01"};
+    Anniversary extra_anniversaries[MAX_ANNIVERSARIES-1]{};
+};
+inline DisplayPreferences migrate_preferences(const DisplayPreferencesV2 &old) {
+    DisplayPreferences p{};p.version=old.version;
+    std::memcpy(p.order,old.order,7);p.order[7]='7';p.order[8]=0;
+    // Invalid legacy terminators remain invalid after migration.
+    if(old.order[7])p.version=0;
+    std::memcpy(p.anniversary_name,old.anniversary_name,sizeof(p.anniversary_name));
+    std::memcpy(p.anniversary_date,old.anniversary_date,sizeof(p.anniversary_date));
+    std::memcpy(p.job_start_date,old.job_start_date,sizeof(p.job_start_date));
+    p.anniversary_annual=old.anniversary_annual;return p;
+}
 inline bool leap_year(int y) { return y%4==0 && (y%100!=0 || y%400==0); }
 inline int month_days(int y,int m) {
     constexpr int days[]={31,28,31,30,31,30,31,31,30,31,30,31};
@@ -71,17 +90,17 @@ inline bool display_preferences_valid(const DisplayPreferences &p) {
         int y,m,d;
         if (a.name[0] ? !anniversary_date_parts(a.date,y,m,d) : a.date[0]!=0) return false;
     }
-    if (p.version!=1 || p.order[7] || p.anniversary_annual>1 ||
+    if (p.version!=1 || p.order[8] || p.anniversary_annual>1 ||
         !std::memchr(p.job_start_date,0,sizeof(p.job_start_date)) ||
         !std::memchr(p.anniversary_name,0,sizeof(p.anniversary_name)) ||
         !std::memchr(p.anniversary_date,0,sizeof(p.anniversary_date))) return false;
     unsigned mask=0;
     for (unsigned i=0;i<DISPLAY_PAGE_COUNT;++i) {
-        if (p.order[i]<'0' || p.order[i]>'6') return false;
+        if (p.order[i]<'0' || p.order[i]>'7') return false;
         mask|=1U<<(p.order[i]-'0');
     }
     int sy,sm,sd;
-    if (mask!=127 || !anniversary_name_valid(p.anniversary_name) ||
+    if (mask!=255 || !anniversary_name_valid(p.anniversary_name) ||
         !anniversary_date_parts(p.job_start_date,sy,sm,sd)) return false;
     if (!p.anniversary_name[0]) return !p.anniversary_date[0];
     int y,m,d; return anniversary_date_parts(p.anniversary_date,y,m,d);

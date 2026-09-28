@@ -1,4 +1,5 @@
 #include "app_config.h"
+#include "brightness.h"
 #include "esp_log.h"
 #include "nvs.h"
 #include "nvs_flash.h"
@@ -13,6 +14,7 @@ DisplayTheme active_theme=DisplayTheme::Classic;
 DisplaySchedule active_schedule;
 DisplayPreferences active_preferences;
 NtpServer active_ntp=NtpServer::Pool;
+uint32_t active_brightness=100;
 char ignored_version[32]{};
 SemaphoreHandle_t mutex;
 SemaphoreHandle_t maintenance;
@@ -33,6 +35,7 @@ esp_err_t app_config_init(bool *configured) {
     active_schedule = DisplaySchedule{};
     active_preferences=DisplayPreferences{};
     active_ntp=NtpServer::Pool;
+    active_brightness=100;
     ignored_version[0]=0;
     nvs_handle_t handle;
     err = nvs_open("salary_thief",NVS_READONLY,&handle);
@@ -45,11 +48,19 @@ esp_err_t app_config_init(bool *configured) {
     DisplaySchedule schedule{}; size_t schedule_size=sizeof(schedule);
     const auto schedule_error=nvs_get_blob(handle,"display_hours",&schedule,&schedule_size);
     DisplayPreferences preferences{}; size_t preferences_size=sizeof(preferences);
-    auto preferences_error=nvs_get_blob(handle,"display_prefs3",&preferences,&preferences_size);
+    auto preferences_error=nvs_get_blob(handle,"display_prefs4",&preferences,&preferences_size);
+    if (preferences_error==ESP_ERR_NVS_NOT_FOUND) {
+        DisplayPreferencesV3 old{};size_t old_size=sizeof(old);
+        if(nvs_get_blob(handle,"display_prefs3",&old,&old_size)==ESP_OK && old_size==sizeof(old)) {
+            preferences=migrate_preferences(old);
+            std::memcpy(preferences.extra_anniversaries,old.extra_anniversaries,sizeof(old.extra_anniversaries));
+            preferences_error=ESP_OK;preferences_size=sizeof(preferences);
+        }
+    }
     if (preferences_error==ESP_ERR_NVS_NOT_FOUND) {
         DisplayPreferencesV2 old{}; size_t old_size=sizeof(old);
         if (nvs_get_blob(handle,"display_prefs2",&old,&old_size)==ESP_OK && old_size==sizeof(old)) {
-            static_cast<DisplayPreferencesV2 &>(preferences)=old;
+            preferences=migrate_preferences(old);
             preferences_error=ESP_OK; preferences_size=sizeof(preferences);
         }
     }
@@ -57,7 +68,7 @@ esp_err_t app_config_init(bool *configured) {
         LegacyDisplayPreferences old{}; size_t old_size=sizeof(old);
         if (nvs_get_blob(handle,"display_prefs",&old,&old_size)==ESP_OK && old_size==sizeof(old) && !old.order[6]) {
             preferences.version=old.version;
-            std::memcpy(preferences.order,old.order,6); preferences.order[6]='6'; preferences.order[7]=0;
+            std::memcpy(preferences.order,old.order,6); preferences.order[6]='6'; preferences.order[7]='7';preferences.order[8]=0;
             std::memcpy(preferences.anniversary_name,old.anniversary_name,sizeof(old.anniversary_name));
             std::memcpy(preferences.anniversary_date,old.anniversary_date,sizeof(old.anniversary_date));
             preferences.anniversary_annual=old.anniversary_annual;
@@ -66,6 +77,8 @@ esp_err_t app_config_init(bool *configured) {
     }
     char ignored[32]{}; size_t ignored_size=sizeof(ignored);
     uint32_t ntp=0; size_t ntp_size=sizeof(ntp);
+    uint32_t brightness=100;size_t brightness_size=sizeof(brightness);
+    const auto brightness_error=nvs_get_blob(handle,"brightness",&brightness,&brightness_size);
     const auto ntp_error=nvs_get_blob(handle,"ntp_server",&ntp,&ntp_size);
     if (nvs_get_blob(handle,"ota_ignored",ignored,&ignored_size)==ESP_OK &&
         ignored_size==sizeof(ignored) && std::memchr(ignored,0,sizeof(ignored)))
@@ -75,6 +88,8 @@ esp_err_t app_config_init(bool *configured) {
         record.size == sizeof(AppConfig) && record.crc == config_checksum(record.config) &&
         config_migrate(record.config)) {
         active=record.config; *configured=true;
+        if(brightness_error==ESP_OK && brightness_size==sizeof(brightness) && brightness_valid(brightness))
+            active_brightness=brightness;
         if (ntp_error==ESP_OK && ntp_size==sizeof(ntp) && ntp_server_valid(ntp))
             active_ntp=static_cast<NtpServer>(ntp);
         if (theme_error==ESP_OK && theme_size==sizeof(theme) && display_theme_valid(theme))
@@ -110,6 +125,18 @@ DisplayPreferences app_config_display_preferences() {
 }
 NtpServer app_config_ntp_server() {
     xSemaphoreTake(mutex,portMAX_DELAY); const auto ntp=active_ntp; xSemaphoreGive(mutex); return ntp;
+}
+uint32_t app_config_brightness() {
+    xSemaphoreTake(mutex,portMAX_DELAY);const auto value=active_brightness;xSemaphoreGive(mutex);return value;
+}
+esp_err_t app_config_save_brightness(uint32_t value) {
+    if(!brightness_valid(value))return ESP_ERR_INVALID_ARG;
+    if(!app_config_begin_ota())return ESP_ERR_INVALID_STATE;
+    xSemaphoreTake(mutex,portMAX_DELAY);
+    nvs_handle_t h;auto err=nvs_open("salary_thief",NVS_READWRITE,&h);
+    if(err==ESP_OK){err=nvs_set_blob(h,"brightness",&value,sizeof(value));if(err==ESP_OK)err=nvs_commit(h);nvs_close(h);}
+    if(err==ESP_OK)active_brightness=value;
+    xSemaphoreGive(mutex);app_config_end_ota();return err;
 }
 void app_config_ignored_version(char (&version)[32]) {
     xSemaphoreTake(mutex,portMAX_DELAY); std::memcpy(version,ignored_version,32); xSemaphoreGive(mutex);
@@ -147,7 +174,7 @@ esp_err_t app_config_save(const AppConfig &c,DisplayTheme theme,const DisplaySch
         const uint32_t saved_theme=static_cast<uint32_t>(theme);
         if (err == ESP_OK) err=nvs_set_blob(h,"theme",&saved_theme,sizeof(saved_theme));
         if (err == ESP_OK) err=nvs_set_blob(h,"display_hours",&schedule,sizeof(schedule));
-        if (err == ESP_OK) err=nvs_set_blob(h,"display_prefs3",&preferences,sizeof(preferences));
+        if (err == ESP_OK) err=nvs_set_blob(h,"display_prefs4",&preferences,sizeof(preferences));
         const auto ntp_value=static_cast<uint32_t>(ntp);
         if (err == ESP_OK) err=nvs_set_blob(h,"ntp_server",&ntp_value,sizeof(ntp_value));
         if (err == ESP_OK) err=nvs_commit(h);

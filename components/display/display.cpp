@@ -8,6 +8,8 @@
 #include "app_config.h"
 #include "app_system.h"
 #include "driver/gpio.h"
+#include "driver/ledc.h"
+#include "brightness.h"
 #include "esp_lcd_io_i80.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
@@ -34,6 +36,14 @@ SemaphoreHandle_t transfer_done;
 uint16_t *front, *back, *strip;
 uint32_t strip_hashes[STRIPS]{};
 bool first_frame=true;
+esp_err_t backlight(uint32_t value) {
+    static uint32_t previous=UINT32_MAX;
+    if(previous==value)return ESP_OK;
+    auto err=ledc_set_duty(LEDC_LOW_SPEED_MODE,LEDC_CHANNEL_0,brightness_duty(value));
+    if(err==ESP_OK)err=ledc_update_duty(LEDC_LOW_SPEED_MODE,LEDC_CHANNEL_0);
+    if(err==ESP_OK)previous=value;
+    return err;
+}
 bool transferred(esp_lcd_panel_io_handle_t,esp_lcd_panel_io_event_data_t *,void *) {
     BaseType_t wake=pdFALSE; xSemaphoreGiveFromISR(transfer_done,&wake); return wake==pdTRUE;
 }
@@ -42,6 +52,12 @@ esp_err_t panel_init() {
     output.mode=GPIO_MODE_OUTPUT;
     ESP_ERROR_CHECK(gpio_config(&output));
     gpio_set_level(GPIO_NUM_15,1); gpio_set_level(GPIO_NUM_9,1); gpio_set_level(GPIO_NUM_38,0);
+    ledc_timer_config_t timer{};timer.speed_mode=LEDC_LOW_SPEED_MODE;timer.duty_resolution=LEDC_TIMER_10_BIT;
+    timer.timer_num=LEDC_TIMER_0;timer.freq_hz=5000;timer.clk_cfg=LEDC_AUTO_CLK;
+    ESP_ERROR_CHECK(ledc_timer_config(&timer));
+    ledc_channel_config_t channel{};channel.gpio_num=38;channel.speed_mode=LEDC_LOW_SPEED_MODE;
+    channel.channel=LEDC_CHANNEL_0;channel.timer_sel=LEDC_TIMER_0;channel.duty=0;
+    ESP_ERROR_CHECK(ledc_channel_config(&channel));
     vTaskDelay(pdMS_TO_TICKS(20));
     transfer_done=xSemaphoreCreateBinary(); if (!transfer_done) return ESP_ERR_NO_MEM;
     esp_lcd_i80_bus_config_t bus{};
@@ -110,7 +126,7 @@ esp_err_t flush(const UiModel &model) {
 esp_err_t update_screen(const UiModel &model,bool visible,bool &panel_on) {
     if (!visible) {
         if (!panel_on) return ESP_OK;
-        gpio_set_level(GPIO_NUM_38,0);
+        const auto dark=backlight(0);if(dark!=ESP_OK)return dark;
         const auto err=esp_lcd_panel_disp_on_off(panel,false);
         if (err==ESP_OK) panel_on=false;
         return err;
@@ -119,7 +135,7 @@ esp_err_t update_screen(const UiModel &model,bool visible,bool &panel_on) {
     if (!panel_on) first_frame=true;
     auto err=flush(model);
     if (err==ESP_OK && !panel_on) err=esp_lcd_panel_disp_on_off(panel,true);
-    if (err==ESP_OK) { panel_on=true; gpio_set_level(GPIO_NUM_38,1); }
+    if (err==ESP_OK) { panel_on=true;err=backlight(model.brightness); }
     return err;
 }
 void task(void *) {
@@ -129,6 +145,7 @@ void task(void *) {
     }
     UiAnimation animation(esp_random());
     UiModel model{}; model.config=app_config_snapshot(); model.physics=&animation.physics();
+    model.brightness=app_config_brightness();
     model.theme=app_config_theme();
     const auto saved_preferences=app_config_display_preferences();
     model.preferences=saved_preferences;
@@ -153,7 +170,7 @@ void task(void *) {
                 released_at=0;
             } else {
                 update_screen(model,false,panel_on);
-                gpio_set_level(GPIO_NUM_38,0);
+                ledc_stop(LEDC_LOW_SPEED_MODE,LEDC_CHANNEL_0,0);
                 if (gpio_get_level(GPIO_NUM_14)==0) released_at=0;
                 else if (!released_at) released_at=frame_start;
                 else if (frame_start-released_at>=30000) button_enter_deep_sleep();
@@ -186,7 +203,18 @@ void task(void *) {
         model.frame_us=device.frame_us; model.dropped_frames=dropped;
         uint8_t page;
         while (xQueueReceive(page_events(),&page,0)==pdTRUE) {
-            if (!model.ota.prompt && !model.ota.foreground) model.page_position=ui_next_page(model.page_position,page==255);
+            if (model.ota.prompt || model.ota.foreground)continue;
+            if(page==BRIGHTNESS_EDIT && model.page==7) {
+                if(model.brightness_editing) {
+                    model.brightness_save_failed=app_config_save_brightness(model.brightness)!=ESP_OK;
+                    if(!model.brightness_save_failed)model.brightness_editing=false;
+                } else {model.brightness_editing=true;model.brightness_save_failed=false;}
+            } else if(model.brightness_editing) {
+                if(page==BRIGHTNESS_UP || page==BRIGHTNESS_DOWN) {
+                    model.brightness=brightness_step(model.brightness,page==BRIGHTNESS_UP);
+                    model.brightness_save_failed=false;
+                }
+            } else if(page==1 || page==255)model.page_position=ui_next_page(model.page_position,page==255);
         }
         model.page=model.preferences.order[model.page_position]-'0';
         uint16_t minute=0;
@@ -212,7 +240,7 @@ void task(void *) {
         // since its original press edge occurred while the intro forced the LCD on.
         const bool pressed=device.button_presses!=last_button_presses || boot.button_wake();
         last_button_presses=device.button_presses;
-        const bool force_on=model.boot_progress<1.f || model.ota.prompt || model.ota.foreground ||
+        const bool force_on=model.brightness_editing || model.boot_progress<1.f || model.ota.prompt || model.ota.foreground ||
             (bits&(SETUP_MODE_BIT|SYSTEM_ERROR_BIT)) || !(bits&CONFIG_READY_BIT);
         const bool visible=display_policy.update(schedule,minute,model.synced,force_on,pressed,model.animation_ms);
         const auto err=update_screen(model,visible,panel_on);
@@ -224,7 +252,7 @@ void task(void *) {
         }
         const uint32_t elapsed=uint32_t(esp_timer_get_time()-frame_start);
         if (elapsed>FRAME_MS*1000U) { ++dropped; wake=xTaskGetTickCount(); }
-        display_publish(elapsed,dropped,!back,model.page);
+        display_publish(elapsed,dropped,!back,model.page,model.brightness_editing);
         system_heartbeat(CriticalTask::Display);
         vTaskDelayUntil(&wake,pdMS_TO_TICKS(FRAME_MS));
     }

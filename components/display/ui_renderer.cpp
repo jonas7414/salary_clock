@@ -337,8 +337,8 @@ void header(Canvas &c,const UiModel &m) {
 }
 void footer(Canvas &c,const UiModel &m) {
     for (unsigned i=0;i<UI_PAGE_COUNT;++i) {
-        if (m.theme==DisplayTheme::Classic) c.ellipse(265+i*7,160,2,2,i==m.page_position ? GOLD : LINE);
-        else c.rect(262+i*7,158,5,4,i==m.page_position?GOLD:LINE);
+        if (m.theme==DisplayTheme::Classic) c.ellipse(258+i*7,160,2,2,i==m.page_position ? GOLD : LINE);
+        else c.rect(255+i*7,158,5,4,i==m.page_position?GOLD:LINE);
     }
 }
 void quiet_cloud(Canvas &c,int x,int y,uint32_t milliseconds) {
@@ -652,12 +652,22 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
                 c.text(179,53+i*29,buf,size,INK,132);
             }
         } else if (m.page==6) {
-            c.text(12,37,"這份工撈多少",16,INK);
+            c.text(12,37,"這份工作撈多少",16,INK);
             c.text(12,63,"到職至今 / NT$",12,MUTED);
             if (m.salary.job_total_available) money(c,12,84,m.salary.job_earned_money,296);
             else c.text(12,87,"缺少歷史行事曆",16,GOLD);
             c.text(12,126,"到職日",12,MUTED);
             c.text(64,126,m.preferences.job_start_date,12,INK);
+        } else if (m.page==7) {
+            c.text(12,37,"亮度調整",16,INK);
+            c.text(225,40,m.brightness_editing?"調整中":"已儲存",12,GOLD);
+            std::snprintf(buf,sizeof(buf),"%lu%%",static_cast<unsigned long>(m.brightness));
+            c.center(160,64,buf,32,GOLD);
+            for(int i=0;i<10;++i)c.rect(22+i*28,107,24,8,unsigned(i)<m.brightness/10?GOLD:LINE);
+            if(m.brightness_editing) {
+                c.center(160,124,"上方按鈕調暗 / 下方按鈕調亮",12,INK);
+                c.center(160,143,m.brightness_save_failed?"儲存失敗，長按上方按鈕重試":"長按上方按鈕 2 秒儲存",10,MUTED);
+            } else c.center(160,134,"長按上方按鈕 2 秒開始調整",12,MUTED);
         } else if (m.page==4) {
             clock_page(c,m);
         } else if (m.page==5) {

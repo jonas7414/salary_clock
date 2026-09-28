@@ -36,7 +36,7 @@ POST 是完整核心設定提交，不是一般 PATCH。下表「必填」欄位
 | `work_start`, `lunch_start`, `lunch_end`, `work_end` | `HH:MM`，00:00–23:59，依列出順序嚴格遞增 | 必填 |
 | `display_theme` | 整數 0／1／2 | 選填 |
 | `display_on`, `display_off` | `HH:MM`；預設 08:00／19:00，相同表示全天開啟，支援跨夜 | 選填 |
-| `page_order` | 0–6 各一次的七字元字串，預設 `0126453` | 選填 |
+| `page_order` | 0–7 各一次的八字元字串，預設 `01264573` | 選填 |
 | `job_start_date` | 真實日期 `YYYY-MM-DD`，1900–2199，預設 `2026-08-01` | 選填 |
 | `anniversary_name` | 最多 24 字，限定支援的英數、中日文與標點；不支援 emoji | 選填 |
 | `anniversary_date` | `YYYY-MM-DD`，1900–2199；名稱非空時日期必須有效 | 選填 |
@@ -66,7 +66,7 @@ POST 是完整核心設定提交，不是一般 PATCH。下表「必填」欄位
   "display_theme": 0,
   "display_on": "08:00",
   "display_off": "19:00",
-  "page_order": "0126453",
+  "page_order": "01264573",
   "job_start_date": "2026-08-01",
   "anniversary_name": "",
   "anniversary_date": "",

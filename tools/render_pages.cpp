@@ -31,5 +31,5 @@ int main(int argc,char **argv) {
         for(auto p:full) {unsigned char rgb[]={uint8_t((p>>11)*255/31),uint8_t(((p>>5)&63)*255/63),uint8_t((p&31)*255/31)};std::fwrite(rgb,1,3,file);}
         std::fclose(file);
     }
-    std::puts("Rendered all 7 pages in all 3 themes.");
+    std::puts("Rendered all 8 pages in all 3 themes.");
 }

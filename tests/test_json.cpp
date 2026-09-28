@@ -84,10 +84,10 @@ int main(){
     CHECK(std::strcmp(prefs.job_start_date,"2025-08-01")==0);
     CHECK(!parse_prefs("\"job_start_date\":\"2025-02-29\""));
     CHECK(!parse_prefs("\"job_start_date\":\"\""));
-    CHECK(parse_prefs("\"page_order\":\"4501263\",\"anniversary_name\":\"Our day\",\"anniversary_date\":\"2024-02-29\",\"anniversary_annual\":1"));
-    CHECK(std::strcmp(prefs.order,"4501263")==0 && std::strcmp(prefs.anniversary_date,"2024-02-29")==0);
+    CHECK(parse_prefs("\"page_order\":\"45012673\",\"anniversary_name\":\"Our day\",\"anniversary_date\":\"2024-02-29\",\"anniversary_annual\":1"));
+    CHECK(std::strcmp(prefs.order,"45012673")==0 && std::strcmp(prefs.anniversary_date,"2024-02-29")==0);
     CHECK(config_parse_json(body.data(),body.size(),current,result,&reason,&theme,&schedule,&prefs));
-    CHECK(std::strcmp(prefs.order,"4501263")==0); // Missing fields preserve the preference.
+    CHECK(std::strcmp(prefs.order,"45012673")==0); // Missing fields preserve the preference.
     for (const auto field:{"\"page_order\":\"001234\"","\"page_order\":\"01234566\"","\"page_order\":\"01234\"",
         "\"page_order\":[0,1,2,4,5,3]","\"anniversary_date\":\"2025-02-29\"","\"anniversary_date\":\"2024-04-31\"",
         "\"anniversary_name\":\"\"","\"anniversary_annual\":2","\"anniversary_name\":\"\\ud83d\\ude00\"",

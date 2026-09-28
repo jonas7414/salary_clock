@@ -13,6 +13,8 @@ constexpr unsigned ui_next_page(unsigned page,bool previous) {
     return (page%UI_PAGE_COUNT+(previous ? UI_PAGE_COUNT-1 : 1))%UI_PAGE_COUNT;
 }
 struct UiModel {
+    uint32_t brightness{100};
+    bool brightness_editing{},brightness_save_failed{};
     AppConfig config{};
     DisplayTheme theme{DisplayTheme::Classic};
     SalaryStatus salary{};

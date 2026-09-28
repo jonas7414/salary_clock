@@ -11,7 +11,7 @@ const path=require('node:path');
    const page=await browser.newPage({viewport:{width,height:844}}),errors=[];
    page.on('pageerror',e=>errors.push(e.message));
    let posted=null,reboots=0;
-   const config={config_version:1,wifi_ssid:'Test AP',has_password:true,monthly_salary:40000,work_days:31,timezone:'Asia/Taipei',display_theme:0,work_start:'09:00',lunch_start:'12:00',lunch_end:'13:00',work_end:'18:00',display_on:'08:00',display_off:'19:00',page_order:'0126453',anniversary_name:'',anniversary_date:'',anniversary_annual:1};
+   const config={config_version:1,wifi_ssid:'Test AP',has_password:true,monthly_salary:40000,work_days:31,timezone:'Asia/Taipei',display_theme:0,work_start:'09:00',lunch_start:'12:00',lunch_end:'13:00',work_end:'18:00',display_on:'08:00',display_off:'19:00',page_order:'01264573',anniversary_name:'',anniversary_date:'',anniversary_annual:1};
    if(width===1024)config.ntp_server=1;
    await page.route('http://salary-clock.test/**',async route=>{
     const req=route.request(),url=new URL(req.url());
@@ -29,11 +29,11 @@ const path=require('node:path');
    assert.equal(await page.evaluate(()=>document.querySelector('#salary-settings').getBoundingClientRect().top>=70),true);
    await page.getByRole('radio',{name:'琥珀終端',exact:true}).check();
    const names=()=>page.locator('.page-name').allTextContents();
-   assert.equal((await names()).at(-1),'7. 系統資訊');
+   assert.equal((await names()).at(-1),'8. 系統資訊');
    await page.getByRole('button',{name:'系統資訊上移'}).click();
-   assert.equal((await names())[5],'6. 系統資訊');
-   if(width>500){await page.locator('#page-settings').evaluate(el=>el.scrollIntoView({block:'start',behavior:'instant'}));await page.locator('.page-item').last().dragTo(page.locator('.page-item').first());assert.equal((await names())[0],'1. 休假倒數');}
-   await page.getByRole('button',{name:'恢復預設順序'}).click();assert.equal((await names()).at(-1),'7. 系統資訊');
+   assert.equal((await names())[6],'7. 系統資訊');
+   if(width>500){await page.locator('#page-settings').evaluate(el=>el.scrollIntoView({block:'start',behavior:'instant'}));await page.locator('.page-item').last().dragTo(page.locator('.page-item').first());assert.equal((await names())[0],'1. 亮度調整');}
+   await page.getByRole('button',{name:'恢復預設順序'}).click();assert.equal((await names()).at(-1),'8. 系統資訊');
    assert.equal(await page.getByLabel('到職日',{exact:true}).inputValue(),'2026-08-01');
    await page.getByLabel('到職日',{exact:true}).fill('2025-08-01');
    await page.getByLabel('紀念日名稱',{exact:true}).fill('我們的紀念日');
@@ -59,7 +59,7 @@ const path=require('node:path');
    assert.match(await page.locator('#message').innerText(),/不支援 emoji/);
    await page.getByLabel('紀念日名稱',{exact:true}).fill('我們的紀念日');
    await page.getByRole('button',{name:'儲存並重新開機'}).click();await page.waitForFunction(()=>document.getElementById('message').textContent.includes('設定已儲存'));
-   assert.equal(posted.page_order,'0124653');assert.equal(posted.anniversary_name,'我們的紀念日');
+   assert.equal(posted.page_order,'01246573');assert.equal(posted.anniversary_name,'我們的紀念日');
    assert.equal(posted.job_start_date,'2025-08-01');
    assert.equal(posted.ntp_server,1);
    assert.equal(posted.display_theme,1);assert.equal(posted.monthly_salary,40000);

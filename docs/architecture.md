@@ -65,19 +65,20 @@ flowchart TD
 
 ## 頁面與主題
 
-定義在 `display_preferences.h` 與 `ui_renderer.h`。預設順序字串為 `0126453`。
+定義在 `display_preferences.h` 與 `ui_renderer.h`。預設順序字串為 `01264573`。
 
 | 穩定 ID | 預設第幾頁 | 名稱 |
 | --- | --- | --- |
 | 0 | 1 | 今日偷薪 |
 | 1 | 2 | 還能偷多少 |
 | 2 | 3 | 本月戰績 |
-| 6 | 4 | 這份工撈多少 |
+| 6 | 4 | 這份工作撈多少 |
 | 4 | 5 | 現在時刻 |
 | 5 | 6 | 休假倒數 |
-| 3 | 7 | 系統資訊 |
+| 7 | 7 | 亮度調整 |
+| 3 | 8 | 系統資訊 |
 
-`UiModel.page` 是 ID；`page_position` 是目前排序位置，用於頁尾指示。上方按鈕在系統資訊頁長按兩秒的判斷依據是 ID 3，不是「第七頁」。主題值：0 Classic、1 Amber、2 Handheld。
+`UiModel.page` 是 ID；`page_position` 是目前排序位置，用於頁尾指示。上方按鈕在系統資訊頁長按兩秒的判斷依據是 ID 3，與排序位置無關。主題值：0 Classic、1 Amber、2 Handheld。
 
 ## 薪資與日期
 
@@ -99,9 +100,15 @@ NVS namespace 為 `salary_thief`。主要設定由 magic、size、CRC 與 `AppCo
 | `display_hours` | 每日亮屏／關屏時段 |
 | `display_prefs` | 舊版六頁順序與紀念日，保留供回滾 |
 | `display_prefs2` | 七頁順序、紀念日與到職日 |
-| `display_prefs3` | 七頁順序、到職日與最多五個紀念日；目前寫入此 key |
+| `display_prefs3` | 舊版七頁順序、到職日與最多五個紀念日；供升級遷移讀取 |
+| `display_prefs4` | 八頁順序、到職日與五個紀念日；新增亮度頁後寫入此 key |
+| `brightness` | 獨立 uint32 blob，10–100、10 的倍數；缺少或損壞時預設 100 |
 | `ota_ignored` | 使用者忽略的版本 |
 
 v1.4.5 在缺少新 key 時讀舊偏好，在 RAM 遷移並把新頁 ID 6 加到舊順序尾端；不會在開機遷移時覆寫舊 key。使用者儲存後才寫入新 key。NVS 空間／版本錯誤不能用自動 erase 掩蓋，避免破壞使用者設定與回滾能力。
 
 多紀念日版本優先讀 `display_prefs3`，缺少時讀 `display_prefs2`，再回退舊 `display_prefs`。原紀念日保留為第一項，其餘四項預設空白；儲存新 key 不覆寫舊 key。`anniversary_for_tick()` 使用單調運作秒數，每五秒選擇下一個非空項目，保留各項獨立的每年重複設定；display task 以原始偏好副本選取，避免把上一輪項目誤當成第一項。
+
+亮度頁版本先讀 `display_prefs4`，再依序嘗試 3、2、舊偏好格式。遷移時保留既有順序，亮度頁 ID 7 加在尾端。原 key 保留供回滾。
+
+背光在 display task 使用 LEDC low-speed channel 0、timer 0、5 kHz／10 bit 控制接腳 38。調整事件透過 page queue 傳入（250 切換編輯／保存、251 調暗、252 調亮），編輯狀態透過 DeviceStatus 回報給按鈕 task；編輯中下方按鈕不進入設定或休眠，螢幕保持亮起。只在確認保存時寫入 brightness key，遵守 OTA 維護鎖，失败時保持編輯並提示重試。螢幕關閉時 PWM 歸零，深睡前停止 LEDC 輸出。

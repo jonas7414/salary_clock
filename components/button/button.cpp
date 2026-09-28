@@ -1,5 +1,6 @@
 #include "button.h"
 #include "button_logic.h"
+#include "brightness.h"
 #include "ota_manager.h"
 #include "app_system.h"
 #include "driver/gpio.h"
@@ -24,6 +25,8 @@ void task(void *) {
         const uint32_t now=uint32_t(esp_timer_get_time()/1000);
         uint32_t held=0; bool power_held=false;
         const auto ota=ota_get_status();
+        const auto device=device_snapshot();
+        const bool adjusting=device.brightness_editing;
         const int mode=ota.prompt?1:ota.foreground?2:0;
         const bool power_down=gpio_get_level(GPIO_NUM_14)==0,boot_down=gpio_get_level(GPIO_NUM_0)==0;
         if (mode!=input_mode) {
@@ -46,10 +49,11 @@ void task(void *) {
             const bool was_pressed=button.pressed();
             const auto action=button.update(gpio_get_level(GPIO_NUM_14)==0,now);
             if (!was_pressed && button.pressed()) ++presses;
-            held=button.held_ms(now); power_held=button.pressed();
-            if (action==ButtonAction::Sleep && !(xEventGroupGetBits(system_events())&OTA_ACTIVE_BIT))
+            held=adjusting?0:button.held_ms(now); power_held=button.pressed();
+            if (!adjusting && action==ButtonAction::Sleep && !(xEventGroupGetBits(system_events())&OTA_ACTIVE_BIT))
                 xEventGroupSetBits(system_events(),SLEEP_REQUESTED_BIT);
-            if (action==ButtonAction::Page) { const uint8_t page=1; xQueueSend(page_events(),&page,0); }
+            if (action==ButtonAction::Page) { const uint8_t page=adjusting?BRIGHTNESS_UP:1; xQueueSend(page_events(),&page,0); }
+            else if(adjusting && action==ButtonAction::Setup) {const uint8_t page=BRIGHTNESS_UP;xQueueSend(page_events(),&page,0);}
             else if (action==ButtonAction::Setup) {
                 ESP_LOGI("button","GPIO14 double click: setup requested");
                 if (system_request(SystemCommand::Setup)!=ESP_OK)
@@ -60,11 +64,12 @@ void task(void *) {
             const bool was_pressed=previous.pressed();
             const auto action=previous.update(gpio_get_level(GPIO_NUM_0)==0,now);
             if (!was_pressed && previous.pressed()) ++presses;
-            if (action==ButtonAction::Page) { const uint8_t page=255; xQueueSend(page_events(),&page,0); }
+            if (action==ButtonAction::Page) { const uint8_t page=adjusting?BRIGHTNESS_DOWN:255; xQueueSend(page_events(),&page,0); }
             if (!previous.pressed()) check_sent=false;
-            if (!check_sent && previous.held_ms(now)>=2000 && device_snapshot().active_page==3 &&
+            if (!check_sent && previous.held_ms(now)>=2000 && (device.active_page==3 || device.active_page==7) &&
                 !(xEventGroupGetBits(system_events())&SETUP_MODE_BIT)) {
-                check_sent=true; ota_check_update();
+                if(device.active_page==7) {const uint8_t event=BRIGHTNESS_EDIT;check_sent=xQueueSend(page_events(),&event,0)==pdTRUE;}
+                else {check_sent=true; ota_check_update();}
             }
         }
         button_publish(held,presses,power_held);

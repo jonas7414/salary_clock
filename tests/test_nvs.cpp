@@ -23,6 +23,7 @@ esp_err_t nvs_erase_all(nvs_handle_t){pending.clear();pending_theme.clear();pend
 void nvs_close(nvs_handle_t){}
 int main(){
     bool loaded=true;CHECK(app_config_init(&loaded)==ESP_OK&&!loaded);
+    CHECK(app_config_ntp_server()==NtpServer::Pool);
     auto c=app_config_snapshot();CHECK(c.monthly_salary==40000);std::strcpy(c.wifi_ssid,"Test AP");std::strcpy(c.wifi_password,"test-password");
     c.monthly_salary=55000;CHECK(app_config_save(c)==ESP_OK);CHECK(app_config_snapshot().monthly_salary==40000);
     CHECK(app_config_init(&loaded)==ESP_OK&&loaded);CHECK(app_config_snapshot().monthly_salary==55000);
@@ -120,9 +121,9 @@ int main(){
     CHECK(app_config_save(c)==ESP_OK);CHECK(app_config_init(&loaded)==ESP_OK && loaded);
     app_config_ignored_version(ignored);CHECK(std::strcmp(ignored,"1.5.0")==0);
     CHECK(std::strcmp(app_config_display_preferences().order,"6543210")==0);
-    extras["display_prefs2"]={1,2,3};CHECK(app_config_init(&loaded)==ESP_OK && loaded);
+    extras["display_prefs3"]={1,2,3};CHECK(app_config_init(&loaded)==ESP_OK && loaded);
     CHECK(std::strcmp(app_config_display_preferences().order,"0126453")==0);
-    extras.erase("display_prefs2");LegacyDisplayPreferences old{};
+    extras.erase("display_prefs3");LegacyDisplayPreferences old{};
     std::strcpy(old.order,"543210");std::strcpy(old.anniversary_name,"Old day");std::strcpy(old.anniversary_date,"2020-02-29");
     const auto bytes=reinterpret_cast<const unsigned char *>(&old);
     extras["display_prefs"]={bytes,bytes+sizeof(old)};
@@ -134,7 +135,32 @@ int main(){
     CHECK(app_config_save(c,DisplayTheme::Classic,{},custom)==ESP_OK);
     CHECK(app_config_init(&loaded)==ESP_OK && loaded);
     CHECK(std::strcmp(app_config_display_preferences().job_start_date,"2025-08-01")==0);
+    DisplayPreferencesV2 v2{};std::strcpy(v2.anniversary_name,"Migrated day");std::strcpy(v2.anniversary_date,"2024-02-29");
+    const auto v2bytes=reinterpret_cast<const unsigned char *>(&v2);
+    extras.erase("display_prefs3");extras["display_prefs2"]={v2bytes,v2bytes+sizeof(v2)};
+    CHECK(app_config_init(&loaded)==ESP_OK && loaded);
+    auto multi=app_config_display_preferences();CHECK(std::strcmp(multi.anniversary_name,"Migrated day")==0);
+    CHECK(!multi.extra_anniversaries[0].name[0]);
+    std::strcpy(multi.extra_anniversaries[0].name,"Second day");std::strcpy(multi.extra_anniversaries[0].date,"2025-08-01");multi.extra_anniversaries[0].annual=0;
+    CHECK(app_config_save(c,DisplayTheme::Classic,{},multi)==ESP_OK);
+    CHECK(app_config_init(&loaded)==ESP_OK && loaded);
+    CHECK(std::strcmp(app_config_display_preferences().extra_anniversaries[0].name,"Second day")==0);
+    CHECK(app_config_display_preferences().extra_anniversaries[0].annual==0);
+    CHECK(extras["display_prefs2"]==std::vector<unsigned char>(v2bytes,v2bytes+sizeof(v2)));
     CHECK(app_config_reset()==ESP_OK);CHECK(app_config_init(&loaded)==ESP_OK && !loaded);
     app_config_ignored_version(ignored);CHECK(!ignored[0]);
+    CHECK(app_config_ntp_server()==NtpServer::Pool);
+    CHECK(app_config_save(c,DisplayTheme::Classic,{},DisplayPreferences{},NtpServer::Cloudflare)==ESP_OK);
+    CHECK(app_config_ntp_server()==NtpServer::Pool);
+    CHECK(app_config_init(&loaded)==ESP_OK && loaded);CHECK(app_config_ntp_server()==NtpServer::Cloudflare);
+    CHECK(app_config_save(c)==ESP_OK);CHECK(app_config_init(&loaded)==ESP_OK && loaded);
+    CHECK(app_config_ntp_server()==NtpServer::Cloudflare);
+    fail_commit=true;CHECK(app_config_save(c,DisplayTheme::Classic,{},DisplayPreferences{},NtpServer::Pool)==ESP_FAIL);fail_commit=false;
+    CHECK(app_config_init(&loaded)==ESP_OK && loaded);CHECK(app_config_ntp_server()==NtpServer::Cloudflare);
+    CHECK(app_config_save(c,DisplayTheme::Classic,{},DisplayPreferences{},static_cast<NtpServer>(2))==ESP_ERR_INVALID_ARG);
+    extras["ntp_server"]={0xff,0xff,0xff,0xff};CHECK(app_config_init(&loaded)==ESP_OK && loaded);CHECK(app_config_ntp_server()==NtpServer::Pool);
+    extras["ntp_server"]={1};CHECK(app_config_init(&loaded)==ESP_OK && loaded);CHECK(app_config_ntp_server()==NtpServer::Pool);
+    extras.erase("ntp_server");CHECK(app_config_init(&loaded)==ESP_OK && loaded);CHECK(app_config_ntp_server()==NtpServer::Pool);
+    CHECK(app_config_reset()==ESP_OK);CHECK(app_config_init(&loaded)==ESP_OK && !loaded);CHECK(app_config_ntp_server()==NtpServer::Pool);
     std::printf("PASS: %u NVS checks (persistence, corruption, migration, failures, preferences, ignored versions, OTA exclusion)\n",checks);
 }

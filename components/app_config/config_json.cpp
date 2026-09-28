@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstring>
 #include <initializer_list>
+#include <cstdio>
 namespace {
 bool number(cJSON *j,const char *key,uint32_t &out,uint32_t maximum) {
     const auto *v=cJSON_GetObjectItemCaseSensitive(j,key);
@@ -23,7 +24,7 @@ bool get_time(cJSON *j,const char *key,uint16_t &minutes) {
     minutes=h*60+m; return true;
 }
 }
-bool config_parse_json(const char *body,size_t length,const AppConfig &current,AppConfig &result,const char **reason,DisplayTheme *theme,DisplaySchedule *schedule,DisplayPreferences *preferences) {
+bool config_parse_json(const char *body,size_t length,const AppConfig &current,AppConfig &result,const char **reason,DisplayTheme *theme,DisplaySchedule *schedule,DisplayPreferences *preferences,NtpServer *ntp) {
     *reason="Invalid JSON object";
     if (!body || !length || length>2048 || std::memchr(body,0,length)) return false;
     // This API is a flat object. Reject nested containers before cJSON recursion can
@@ -51,6 +52,10 @@ bool config_parse_json(const char *body,size_t length,const AppConfig &current,A
     for (auto *a=j->child;a;a=a->next) for (auto *b=a->next;b;b=b->next)
         if (std::strcmp(a->string,b->string)==0) { cJSON_Delete(j); *reason="Duplicate JSON key"; return false; }
     auto c=current; uint32_t mask=0,version=0;
+    uint32_t ntp_value=ntp?static_cast<uint32_t>(*ntp):0;
+    if (cJSON_HasObjectItem(j,"ntp_server") && !number(j,"ntp_server",ntp_value,1)) {
+        cJSON_Delete(j); *reason="Invalid NTP server"; return false;
+    }
     bool valid=number(j,"config_version",version,UINT32_MAX) && version==CONFIG_VERSION &&
         number(j,"monthly_salary",c.monthly_salary,1000000000) && number(j,"work_days",mask,127) &&
         string(j,"wifi_ssid",c.wifi_ssid,sizeof(c.wifi_ssid)) && string(j,"timezone",c.timezone,sizeof(c.timezone)) &&
@@ -67,6 +72,19 @@ bool config_parse_json(const char *body,size_t length,const AppConfig &current,A
         cJSON_Delete(j); *reason="Invalid page order or anniversary fields"; return false;
     }
     prefs.anniversary_annual=annual;
+    for (unsigned i=0;i<MAX_ANNIVERSARIES-1;++i) {
+        auto &a=prefs.extra_anniversaries[i];char name[32],date[32],repeat[32];
+        std::snprintf(name,sizeof(name),"anniversary_name_%u",i+2);
+        std::snprintf(date,sizeof(date),"anniversary_date_%u",i+2);
+        std::snprintf(repeat,sizeof(repeat),"anniversary_annual_%u",i+2);
+        uint32_t value=a.annual;
+        if ((cJSON_HasObjectItem(j,name) && !string(j,name,a.name,sizeof(a.name))) ||
+            (cJSON_HasObjectItem(j,date) && !string(j,date,a.date,sizeof(a.date))) ||
+            (cJSON_HasObjectItem(j,repeat) && !number(j,repeat,value,1))) {
+            cJSON_Delete(j); *reason="Invalid anniversary fields"; return false;
+        }
+        a.annual=value;
+    }
     if (!display_preferences_valid(prefs)) {
         cJSON_Delete(j); *reason="Invalid page order, date or anniversary name (1..24 supported characters)"; return false;
     }
@@ -90,5 +108,6 @@ bool config_parse_json(const char *body,size_t length,const AppConfig &current,A
     result=c; if (theme) *theme=static_cast<DisplayTheme>(theme_value);
     if (schedule) *schedule=display_hours;
     if (preferences) *preferences=prefs;
+    if (ntp) *ntp=static_cast<NtpServer>(ntp_value);
     *reason=nullptr; return true;
 }

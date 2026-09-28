@@ -95,9 +95,13 @@ NVS namespace 為 `salary_thief`。主要設定由 magic、size、CRC 與 `AppCo
 | --- | --- |
 | `config` | Wi-Fi、月薪、工時、時區與舊 work_days 欄位 |
 | `theme` | 螢幕主題 |
+| `ntp_server` | 獨立 uint32 blob：0 為 pool.ntp.org、1 為 time.cloudflare.com；缺少或無效時使用 0 |
 | `display_hours` | 每日亮屏／關屏時段 |
 | `display_prefs` | 舊版六頁順序與紀念日，保留供回滾 |
 | `display_prefs2` | 七頁順序、紀念日與到職日 |
+| `display_prefs3` | 七頁順序、到職日與最多五個紀念日；目前寫入此 key |
 | `ota_ignored` | 使用者忽略的版本 |
 
 v1.4.5 在缺少新 key 時讀舊偏好，在 RAM 遷移並把新頁 ID 6 加到舊順序尾端；不會在開機遷移時覆寫舊 key。使用者儲存後才寫入新 key。NVS 空間／版本錯誤不能用自動 erase 掩蓋，避免破壞使用者設定與回滾能力。
+
+多紀念日版本優先讀 `display_prefs3`，缺少時讀 `display_prefs2`，再回退舊 `display_prefs`。原紀念日保留為第一項，其餘四項預設空白；儲存新 key 不覆寫舊 key。`anniversary_for_tick()` 使用單調運作秒數，每五秒選擇下一個非空項目，保留各項獨立的每年重複設定；display task 以原始偏好副本選取，避免把上一輪項目誤當成第一項。

@@ -57,7 +57,9 @@ void task(void *) {
         system_heartbeat(CriticalTask::Time);
         if (xEventGroupWaitBits(system_events(),WIFI_CONNECTED_BIT,pdFALSE,pdTRUE,pdMS_TO_TICKS(1000))&WIFI_CONNECTED_BIT) break;
     }
-    esp_sntp_config_t cfg=ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(2,ESP_SNTP_SERVER_LIST("pool.ntp.org","time.cloudflare.com"));
+    const auto ntp=app_config_ntp_server();
+    esp_sntp_config_t cfg=ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(2,ESP_SNTP_SERVER_LIST(ntp_primary(ntp),ntp_secondary(ntp)));
+    ESP_LOGI("time","SNTP servers: %s, %s",ntp_primary(ntp),ntp_secondary(ntp));
     cfg.sync_cb=synced;
     ESP_ERROR_CHECK(esp_netif_sntp_init(&cfg));
     int64_t start=esp_timer_get_time();

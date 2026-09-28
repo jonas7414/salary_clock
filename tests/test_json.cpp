@@ -10,6 +10,18 @@ static std::string replace(std::string value,const std::string &from,const std::
 int main(){
     AppConfig current=config_defaults(),result{};const char *reason=nullptr;
     auto parse=[&](const std::string &s){return config_parse_json(s.data(),s.size(),current,result,&reason);};
+    NtpServer ntp=NtpServer::Pool;
+    auto parse_ntp=[&](const std::string &s){return config_parse_json(s.data(),s.size(),current,result,&reason,nullptr,nullptr,nullptr,&ntp);};
+    CHECK(parse_ntp(replace(body,"\"config_version\":1","\"ntp_server\":1,\"config_version\":1")));
+    CHECK(ntp==NtpServer::Cloudflare);CHECK(parse_ntp(body));CHECK(ntp==NtpServer::Cloudflare);
+    CHECK(std::strcmp(ntp_primary(ntp),"time.cloudflare.com")==0);
+    CHECK(std::strcmp(ntp_secondary(ntp),"pool.ntp.org")==0);
+    for(const auto value:{"2","-1","0.5","true","null","\"1\""}) {
+        CHECK(!parse_ntp(replace(body,"\"config_version\":1",std::string("\"ntp_server\":")+value+",\"config_version\":1")));
+        CHECK(ntp==NtpServer::Cloudflare);
+    }
+    CHECK(!parse_ntp(replace(replace(body,"\"config_version\":1","\"ntp_server\":0,\"config_version\":1"),"40000","0")));
+    CHECK(ntp==NtpServer::Cloudflare);
     CHECK(parse(body));CHECK(result.monthly_salary==40000&&result.work_days==31&&result.work_start==540);
     CHECK(std::strcmp(result.wifi_password,"test-pass")==0);
     CHECK(!parse(body+"{}"));CHECK(parse(body+" \r\n\t"));CHECK(!parse(body+std::string(1,'\0')));
@@ -84,5 +96,20 @@ int main(){
     }
     CHECK(parse_prefs("\"anniversary_name\":\"\\u6211\\u5011\\u7684\\u7d00\\u5ff5\\u65e5\""));
     CHECK(parse_prefs("\"anniversary_name\":\"\",\"anniversary_date\":\"\""));
+    CHECK(parse_prefs("\"anniversary_name_2\":\"Second day\",\"anniversary_date_2\":\"2024-02-29\",\"anniversary_annual_2\":0"));
+    CHECK(parse_prefs("\"anniversary_name_5\":\"Fifth day\",\"anniversary_date_5\":\"2027-01-01\""));
+    CHECK(parse_prefs("\"job_start_date\":\"2026-08-01\""));
+    CHECK(std::strcmp(prefs.extra_anniversaries[0].name,"Second day")==0 && !prefs.extra_anniversaries[0].annual);
+    for(const auto field:{"\"anniversary_date_2\":\"2025-02-29\"","\"anniversary_name_2\":\"\"","\"anniversary_annual_2\":2","\"anniversary_name_5\":\"\\ud83d\\ude00\""}) {
+        const auto before=prefs;CHECK(!parse_prefs(field));CHECK(std::memcmp(&prefs,&before,sizeof(prefs))==0);
+    }
+    auto first=anniversary_for_tick(prefs,0),next=anniversary_for_tick(prefs,5),wrap=anniversary_for_tick(prefs,10);
+    CHECK(std::strcmp(first.anniversary_name,"Second day")==0);
+    CHECK(std::strcmp(next.anniversary_name,"Fifth day")==0);
+    CHECK(std::strcmp(wrap.anniversary_name,"Second day")==0);
+    tm today{};today.tm_year=126;today.tm_mon=2;today.tm_mday=1;
+    CHECK(anniversary_days(first,today)<0 && anniversary_days(next,today)>0);
+    CHECK(parse_prefs("\"anniversary_name_2\":\"\",\"anniversary_date_2\":\"\""));
+    CHECK(std::strcmp(anniversary_for_tick(prefs,0).anniversary_name,"Fifth day")==0);
     std::printf("PASS: %u JSON/API settings checks (types, ranges, schedules, duplicates, version, credentials, oversized bodies, preferences)\n",checks);
 }

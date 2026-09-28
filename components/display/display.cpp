@@ -130,7 +130,8 @@ void task(void *) {
     UiAnimation animation(esp_random());
     UiModel model{}; model.config=app_config_snapshot(); model.physics=&animation.physics();
     model.theme=app_config_theme();
-    model.preferences=app_config_display_preferences();
+    const auto saved_preferences=app_config_display_preferences();
+    model.preferences=saved_preferences;
     model.page=model.preferences.order[0]-'0';
     const auto schedule=app_config_display_schedule();
     DisplaySchedulePolicy display_policy;
@@ -194,6 +195,7 @@ void task(void *) {
             time_t now=wall.tv_sec; tm local{}; localtime_r(&now,&local);
             model.hundredths=unsigned(wall.tv_usec/10000); model.weekday=unsigned(local.tm_wday);
             model.holiday=holiday_countdown(local);
+            model.preferences=anniversary_for_tick(saved_preferences,uint32_t(esp_timer_get_time()/1000000));
             model.anniversary_days=anniversary_days(model.preferences,local);
             minute=local.tm_hour*60+local.tm_min;
             std::strftime(model.date,sizeof(model.date),"%Y/%m/%d",&local);

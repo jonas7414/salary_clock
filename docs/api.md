@@ -32,6 +32,7 @@ POST 是完整核心設定提交，不是一般 PATCH。下表「必填」欄位
 | `monthly_salary` | 整數 1–1,000,000,000 | 必填 |
 | `work_days` | 整數 1–127，預設 31；舊設定相容欄位，實際工作日依政府行事曆 | 必填 |
 | `timezone` | Asia/Taipei、Asia/Tokyo、Asia/Hong_Kong、Asia/Singapore、UTC | 必填 |
+| `ntp_server` | 整數 0（pool.ntp.org，預設）／1（time.cloudflare.com），選定者優先、另一個為備援 | 選填，重啟後套用 |
 | `work_start`, `lunch_start`, `lunch_end`, `work_end` | `HH:MM`，00:00–23:59，依列出順序嚴格遞增 | 必填 |
 | `display_theme` | 整數 0／1／2 | 選填 |
 | `display_on`, `display_off` | `HH:MM`；預設 08:00／19:00，相同表示全天開啟，支援跨夜 | 選填 |
@@ -40,9 +41,14 @@ POST 是完整核心設定提交，不是一般 PATCH。下表「必填」欄位
 | `anniversary_name` | 最多 24 字，限定支援的英數、中日文與標點；不支援 emoji | 選填 |
 | `anniversary_date` | `YYYY-MM-DD`，1900–2199；名稱非空時日期必須有效 | 選填 |
 | `anniversary_annual` | 整數 0／1，預設 1 | 選填 |
+| `anniversary_name_2` … `anniversary_name_5` | 第 2–5 個紀念日名稱，同第一個的字數與字元限制 | 選填 |
+| `anniversary_date_2` … `anniversary_date_5` | 第 2–5 個日期，同第一個的日期限制 | 選填 |
+| `anniversary_annual_2` … `anniversary_annual_5` | 各自的每年重複設定，整數 0／1 | 選填 |
 | `has_password` | GET 的布林值，只表示是否有密碼 | 不用提交 |
 
 紀念日關閉時名称與日期必須同時清空；每年重複的 2/29 在平年以 2/28 計算。日期與字元驗證見 `display_preferences.h`。未知 key 目前不會造成整體拒絕，不代表有儲存它。
+
+最多五個紀念日。第一個沿用無後綴欄位，第 2–5 個使用上述平面欄位，沒有陣列／巢狀 JSON。省略欄位保留目前值，刪除某個項目時同時提交其空名稱與空日期。時鐘頁每五秒輪播非空項目，分別計算倒數／經過天數。
 
 可提交範例（將 Office-WiFi 換成實際 SSID；省略密碼只適用 SSID 未變更）：
 

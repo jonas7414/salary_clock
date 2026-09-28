@@ -12,6 +12,7 @@ AppConfig active;
 DisplayTheme active_theme=DisplayTheme::Classic;
 DisplaySchedule active_schedule;
 DisplayPreferences active_preferences;
+NtpServer active_ntp=NtpServer::Pool;
 char ignored_version[32]{};
 SemaphoreHandle_t mutex;
 SemaphoreHandle_t maintenance;
@@ -31,6 +32,7 @@ esp_err_t app_config_init(bool *configured) {
     active_theme = DisplayTheme::Classic;
     active_schedule = DisplaySchedule{};
     active_preferences=DisplayPreferences{};
+    active_ntp=NtpServer::Pool;
     ignored_version[0]=0;
     nvs_handle_t handle;
     err = nvs_open("salary_thief",NVS_READONLY,&handle);
@@ -43,7 +45,14 @@ esp_err_t app_config_init(bool *configured) {
     DisplaySchedule schedule{}; size_t schedule_size=sizeof(schedule);
     const auto schedule_error=nvs_get_blob(handle,"display_hours",&schedule,&schedule_size);
     DisplayPreferences preferences{}; size_t preferences_size=sizeof(preferences);
-    auto preferences_error=nvs_get_blob(handle,"display_prefs2",&preferences,&preferences_size);
+    auto preferences_error=nvs_get_blob(handle,"display_prefs3",&preferences,&preferences_size);
+    if (preferences_error==ESP_ERR_NVS_NOT_FOUND) {
+        DisplayPreferencesV2 old{}; size_t old_size=sizeof(old);
+        if (nvs_get_blob(handle,"display_prefs2",&old,&old_size)==ESP_OK && old_size==sizeof(old)) {
+            static_cast<DisplayPreferencesV2 &>(preferences)=old;
+            preferences_error=ESP_OK; preferences_size=sizeof(preferences);
+        }
+    }
     if (preferences_error==ESP_ERR_NVS_NOT_FOUND) {
         LegacyDisplayPreferences old{}; size_t old_size=sizeof(old);
         if (nvs_get_blob(handle,"display_prefs",&old,&old_size)==ESP_OK && old_size==sizeof(old) && !old.order[6]) {
@@ -56,6 +65,8 @@ esp_err_t app_config_init(bool *configured) {
         }
     }
     char ignored[32]{}; size_t ignored_size=sizeof(ignored);
+    uint32_t ntp=0; size_t ntp_size=sizeof(ntp);
+    const auto ntp_error=nvs_get_blob(handle,"ntp_server",&ntp,&ntp_size);
     if (nvs_get_blob(handle,"ota_ignored",ignored,&ignored_size)==ESP_OK &&
         ignored_size==sizeof(ignored) && std::memchr(ignored,0,sizeof(ignored)))
         std::memcpy(ignored_version,ignored,sizeof(ignored));
@@ -64,6 +75,8 @@ esp_err_t app_config_init(bool *configured) {
         record.size == sizeof(AppConfig) && record.crc == config_checksum(record.config) &&
         config_migrate(record.config)) {
         active=record.config; *configured=true;
+        if (ntp_error==ESP_OK && ntp_size==sizeof(ntp) && ntp_server_valid(ntp))
+            active_ntp=static_cast<NtpServer>(ntp);
         if (theme_error==ESP_OK && theme_size==sizeof(theme) && display_theme_valid(theme))
             active_theme=static_cast<DisplayTheme>(theme);
         if (schedule_error==ESP_OK && schedule_size==sizeof(schedule) && display_schedule_valid(schedule))
@@ -95,6 +108,9 @@ esp_err_t app_config_save(const AppConfig &c,DisplayTheme theme,const DisplaySch
 DisplayPreferences app_config_display_preferences() {
     xSemaphoreTake(mutex,portMAX_DELAY); const auto p=active_preferences; xSemaphoreGive(mutex); return p;
 }
+NtpServer app_config_ntp_server() {
+    xSemaphoreTake(mutex,portMAX_DELAY); const auto ntp=active_ntp; xSemaphoreGive(mutex); return ntp;
+}
 void app_config_ignored_version(char (&version)[32]) {
     xSemaphoreTake(mutex,portMAX_DELAY); std::memcpy(version,ignored_version,32); xSemaphoreGive(mutex);
 }
@@ -113,6 +129,10 @@ esp_err_t app_config_ignore_version(const char *version) {
     xSemaphoreGive(mutex); app_config_end_ota(); return err;
 }
 esp_err_t app_config_save(const AppConfig &c,DisplayTheme theme,const DisplaySchedule &schedule,const DisplayPreferences &preferences) {
+    return app_config_save(c,theme,schedule,preferences,app_config_ntp_server());
+}
+esp_err_t app_config_save(const AppConfig &c,DisplayTheme theme,const DisplaySchedule &schedule,const DisplayPreferences &preferences,NtpServer ntp) {
+    if (!ntp_server_valid(static_cast<uint32_t>(ntp))) return ESP_ERR_INVALID_ARG;
     if (!config_validate(c,true)) return ESP_ERR_INVALID_ARG;
     if (!display_theme_valid(static_cast<uint32_t>(theme))) return ESP_ERR_INVALID_ARG;
     if (!display_schedule_valid(schedule)) return ESP_ERR_INVALID_ARG;
@@ -127,7 +147,9 @@ esp_err_t app_config_save(const AppConfig &c,DisplayTheme theme,const DisplaySch
         const uint32_t saved_theme=static_cast<uint32_t>(theme);
         if (err == ESP_OK) err=nvs_set_blob(h,"theme",&saved_theme,sizeof(saved_theme));
         if (err == ESP_OK) err=nvs_set_blob(h,"display_hours",&schedule,sizeof(schedule));
-        if (err == ESP_OK) err=nvs_set_blob(h,"display_prefs2",&preferences,sizeof(preferences));
+        if (err == ESP_OK) err=nvs_set_blob(h,"display_prefs3",&preferences,sizeof(preferences));
+        const auto ntp_value=static_cast<uint32_t>(ntp);
+        if (err == ESP_OK) err=nvs_set_blob(h,"ntp_server",&ntp_value,sizeof(ntp_value));
         if (err == ESP_OK) err=nvs_commit(h);
         nvs_close(h);
     }

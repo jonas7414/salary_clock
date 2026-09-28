@@ -1,5 +1,7 @@
 # 薪水小偷計算器
 
+開發者與 AI 工具請先讀 [AGENTS.md](AGENTS.md)，再依需求參考 [架構](docs/architecture.md)、[API](docs/api.md) 與 [開發流程](docs/development.md)。
+
 一個放在桌上的 ESP32-S3 薪資時鐘，依照月薪與工作排程，即時顯示今天已賺到的金額。上班時小金幣會掉落、碰撞並堆疊；午休換成輕晃的漢堡，下班後則是睡覺的小貓。
 
 介面採繁體中文，使用 **320 × 170 橫向螢幕，USB 接口朝左**。專案以 PlatformIO、ESP-IDF、FreeRTOS 與 C++ 開發。

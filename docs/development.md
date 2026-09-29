@@ -90,7 +90,7 @@ python tools/package_page_previews.py --font /path/to/NotoSansTC.ttf --docs
 | `themes.png` | `all_pages_comparison.png`：全部八頁的三主題對照 |
 | `boot.gif` | `boot_0.gif`：經典原版開機動畫，版本由 `version.txt` 傳入測試建置 |
 | `coin_physics.gif`、`stack_settled.png` | 工作時金幣動畫與堆疊近照 |
-| `lunch.gif`、`rest.gif`、`holiday.gif` | 午休動畫、下班滿金幣靜態畫面及休假動畫 |
+| `lunch.gif`、`rest.gif`、`holiday.gif` | 午休動畫、下班睡覺貓咪動畫及休假動畫 |
 | `coin_progress.png` | 0%、25%、50%、75%、100% 工時的三主題對照，由真實薪資快照產生 |
 
 手冊插圖包含設定與校時等待、紀念日、亮度調整／儲存、更新提示／下載進度、電池／外部供電、收入、費率、到職累積、休假倒數及三主題對照。`render_pages` 另外產生八個 `manual_*.ppm` 情境與 15 個 `progress_*.ppm` 工時情境，並檢查所有輸出的整幀／strip 一致性。金幣 GIF 使用正常時間，示範 14:00 新增第 26 枚，不使用加速掉幣。更新提示中的 v1.4.9 是固定模擬版本，不代表已發布；手冊圖說也必須保留此說明。

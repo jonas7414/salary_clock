@@ -576,11 +576,12 @@ static void render_tests(const char *directory) {
         std::snprintf(m.clock,sizeof(m.clock),"%02d:%02d:%02d",seconds/3600,seconds/60%60,seconds%60);
         ui_render(full.data(),0,170,m);ppm(std::string(directory)+"/coin_"+std::to_string(i)+".ppm",full);
     }
-    m.salary=at(m.config,18,0);std::strcpy(m.clock,"18:00:00");pile();m.physics=&p;
+    m.salary=at(m.config,17,59,59);std::strcpy(m.clock,"17:59:59");pile();m.physics=&p;
     ui_render(full.data(),0,170,m);ppm(std::string(directory)+"/stack_settled.ppm",full);
     // Exercise every animation frame through both framebuffer paths, with the
     // salary and clock held still to verify motion uses its own frame timestamp.
-    for (int scene=0;scene<3;++scene) {
+    for (int theme=0;theme<3;++theme) for (int scene=0;scene<3;++scene) {
+        m.theme=static_cast<DisplayTheme>(theme);
         m.salary=at(m.config,scene==1?18:12,0,0,scene==2?25:23);
         std::strcpy(m.clock,scene==1?"18:00:00":"12:00:00");
         std::strcpy(m.date,scene==2?"2026/09/25":"2026/09/23");
@@ -601,11 +602,11 @@ static void render_tests(const char *directory) {
             for (int y=0;y<170;++y) for (int x=0;x<320;++x)
                 if (x<200 || x>=318 || y<29 || y>=145) outside_unchanged&=full[y*320+x]==first[y*320+x];
             CHECK(outside_unchanged);
-            ppm(std::string(directory)+(scene==2?"/holiday_":scene==1?"/rest_":"/lunch_")+std::to_string(frame)+".ppm",full);
+            if (theme==0) ppm(std::string(directory)+(scene==2?"/holiday_":scene==1?"/rest_":"/lunch_")+std::to_string(frame)+".ppm",full);
         }
-        CHECK(scene==1 ? !moved : moved); // After work keeps the completed pile.
+        CHECK(moved); // Lunch, sleeping cat and holiday scenes all keep animating.
         m.physics=nullptr;ui_render(strip.data(),0,170,m);
-        CHECK(scene==1 ? full!=strip : full==strip);m.physics=&p;
+        CHECK(full==strip);m.physics=&p;
     }
     // Check popup motion, its bounds, theme palette and both rendering paths.
     m.salary=at(m.config,14,37,21);std::strcpy(m.clock,"14:37:21");m.physics=nullptr;

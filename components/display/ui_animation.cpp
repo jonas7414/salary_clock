@@ -60,5 +60,5 @@ void UiAnimation::update(const SalaryStatus &s,int64_t now,float dt) {
     }
     last_earned_=s.earned_money;
     physics_.update(dt);
-    // Lunch pauses the count; the complete pile remains visible after work.
+    // Lunch pauses the count; after work the renderer shows the sleeping cat.
 }

@@ -1,4 +1,4 @@
-v1.4.6 local validation (2026-09-28)
+v1.4.9 local validation (2026-09-29)
 Full tools/test_host.py suite executed with a local MSVC argument adapter.
 CI repeats the suite with g++ and -Werror before publishing.
 
@@ -7,9 +7,10 @@ PASS: job salary boundaries, second ticks, monthly totals, missing calendar and 
 PASS: 2346 calendar streaming/cache checks
 PASS: 2562 button checks
 PASS: 1437 clock/holiday/navigation/brightness rendering checks
-PASS: 14881120 core checks (salary, calendar, configuration, button, Wi-Fi, battery, physics, animation, rendering)
+PASS: moving after-work cat in all three themes; full/strip equality and scene clipping
+PASS: 15253605 core checks (salary, calendar, configuration, button, Wi-Fi, battery, physics, animation, rendering)
 PASS: 73265 RTC checks
-PASS: 1087162 coin stacking checks
+PASS: 9116684 coin stacking checks
 PASS: 193 NVS checks (including brightness persistence and display preference migration)
 PASS: 168 JSON/API settings checks
 PASS: 283 OTA checks

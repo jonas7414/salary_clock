@@ -47,7 +47,59 @@ int main() {
         }
         CHECK(active==count);
     }
-    // A newly earned coin falls onto each row while the previous work is retained.
+    // Restored piles have varied poses, remain supported, and fit at every milestone.
+    for(uint32_t seed=1;seed<=32;++seed)for(unsigned count:{1U,13U,26U,39U,MAX_COINS}) {
+        CoinPhysicsEngine restored(seed);restored.set_count(count);
+        restored.update(.04f);check_geometry(restored,.01f);
+        for(unsigned i=0;i<count;++i) {
+            const auto &c=restored.coins()[i];
+            CHECK(c.sleeping && c.y-c.radius>=CoinPhysicsEngine::TOP);
+            if(i)CHECK(c.rotation!=restored.coins()[i-1].rotation);
+        }
+    }
+    CoinPhysicsEngine repeat_a(23),repeat_b(23),different(24);
+    repeat_a.set_count(26);repeat_b.set_count(26);different.set_count(26);
+    bool varied=false;
+    for(unsigned i=0;i<26;++i) {
+        CHECK(repeat_a.coins()[i].x==repeat_b.coins()[i].x && repeat_a.coins()[i].y==repeat_b.coins()[i].y);
+        varied|=repeat_a.coins()[i].x!=different.coins()[i].x || repeat_a.coins()[i].y!=different.coins()[i].y;
+    }
+    CHECK(varied);
+    // The actual single-increment API must preserve every existing coin, then
+    // let the random incoming coin rebound and wake neighbors through collisions.
+    CoinPhysicsEngine earned(17);earned.set_count(25);
+    const auto before_drop=earned.coins();earned.set_count(26,true);
+    for(unsigned i=0;i<25;++i) {
+        CHECK(earned.coins()[i].x==before_drop[i].x && earned.coins()[i].y==before_drop[i].y);
+        CHECK(earned.coins()[i].rotation==before_drop[i].rotation && earned.coins()[i].order==before_drop[i].order);
+    }
+    CHECK(!earned.coins()[25].sleeping && std::abs(earned.coins()[25].vx)>0);
+    bool bounced=false,woke_neighbors=false;
+    for(unsigned frame=0;frame<200;++frame) {
+        earned.update(.04f);check_geometry(earned,.55f);
+        bounced|=earned.coins()[25].vy<0;
+        for(unsigned i=0;i<25;++i)
+            woke_neighbors|=!earned.coins()[i].sleeping;
+    }
+    CHECK(bounced && woke_neighbors);
+    // A whole workday uses incremental drops, never the restore layout.
+    for(uint32_t seed=1;seed<=32;++seed) {
+        CoinPhysicsEngine day(seed);
+        for(unsigned count=1;count<=MAX_COINS;++count) {
+            day.set_count(count,true);
+            bool asleep=false;
+            for(unsigned frame=0;frame<200 && !asleep;++frame) {
+                day.update(.04f);asleep=true;
+                for(const auto &c:day.coins())if(c.active)asleep&=c.sleeping;
+            }
+            CHECK(asleep);check_geometry(day,.2f);
+            for(const auto &c:day.coins())if(c.active) {
+                if(c.y-c.radius<CoinPhysicsEngine::TOP)std::fprintf(stderr,"day seed %u count %u top %.2f x %.2f\n",seed,count,c.y-c.radius,c.x);
+                CHECK(c.y-c.radius>=CoinPhysicsEngine::TOP);
+            }
+        }
+    }
+    // A newly earned coin falls onto small and nearly-full piles.
     for(unsigned count:{1U,7U,8U,13U,14U,26U,39U,MAX_COINS}) {
         progress.set_count(count,true);CHECK(!progress.coins()[count-1].sleeping);
         advance(progress,8);check_geometry(progress,.2f);

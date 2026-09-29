@@ -1,7 +1,7 @@
 #pragma once
 #include <array>
 #include <cstdint>
-// Eight close-packed rows alternate seven/six coins inside the 108 x 109 area.
+// One workday's coins, with room for an irregular pile inside the 108 x 109 area.
 constexpr unsigned MAX_COINS = 52;
 struct Coin {
     float x{}, y{}, vx{}, vy{}, rotation{}, angularVelocity{}, radius{};
@@ -15,13 +15,13 @@ public:
     explicit CoinPhysicsEngine(uint32_t seed=1) : seed_(seed ? seed : 1) {}
     void reset();
     void spawn();
-    // Restore earned coins immediately; optionally let only the newest one fall.
+    // Restore a random supported pile; a single increment preserves it and drops a coin.
     void set_count(unsigned count,bool animate_last=false);
     void rest_coin();
     void update(float dt);
     const std::array<Coin,MAX_COINS> &coins() const { return coins_; }
     static constexpr float LEFT=204, RIGHT=312, TOP=30, FLOOR=139;
-    static constexpr float MIN_RADIUS=7.5f, MAX_RADIUS=7.5f;
+    static constexpr float MIN_RADIUS=6.f, MAX_RADIUS=7.f;
 private:
     float random(float min,float max);
     void supported(std::array<bool,MAX_COINS> &result) const;

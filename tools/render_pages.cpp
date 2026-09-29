@@ -56,7 +56,7 @@ int main(int argc,char **argv) {
     if(!render(out/"manual_anniversary.ppm",m))return 1;
     m=base;m.page=3;m.page_position=7;m.ota.prompt=true;m.ota.state=OtaState::UPDATE_AVAILABLE;
     // Illustrative future version, not a statement about published releases.
-    std::strcpy(m.ota.latest_version,"1.4.8");
+    std::strcpy(m.ota.latest_version,"1.4.9");
     if(!render(out/"manual_update_prompt.ppm",m))return 1;
     m.ota.prompt=false;m.ota.foreground=true;m.ota.state=OtaState::DOWNLOADING;
     m.ota.percentage=43;m.ota.downloaded_bytes=1290000;m.ota.total_bytes=3000000;
@@ -69,6 +69,8 @@ int main(int argc,char **argv) {
         m=base;m.theme=static_cast<DisplayTheme>(theme);t.tm_hour=hours[step];t.tm_min=t.tm_sec=0;
         m.salary=calculate_salary(m.config,t,0,true,m.preferences.job_start_date);
         std::snprintf(m.clock,sizeof(m.clock),"%02d:00:00",hours[step]);
+        // Use matching random piles across themes so the comparison is meaningful.
+        physics=CoinPhysicsEngine(42);
         physics.set_count(work_coin_count(m.salary));
         if(!render(out/("progress_"+std::to_string(theme)+"_"+std::to_string(step)+".ppm"),m))return 1;
     }

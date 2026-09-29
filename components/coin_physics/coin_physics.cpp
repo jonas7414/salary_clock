@@ -26,11 +26,28 @@ void CoinPhysicsEngine::spawn() {
     *slot={};
     slot->radius=random(MIN_RADIUS,MAX_RADIUS);
     slot->x=random(LEFT+slot->radius,RIGHT-slot->radius);
+    float pile_top=FLOOR;
+    for(const auto &c:coins_)if(c.active && c.sleeping)pile_top=std::min(pile_top,c.y-c.radius);
+    const bool crowded=pile_top<TOP+4*MAX_RADIUS;
+    if(crowded) {
+        // Near capacity, scatter into a lower part of the pile instead of hiding
+        // earned coins above the screen. Landing is still resolved by collisions.
+        float lowest=-1e9f;
+        for(unsigned trial=0;trial<16;++trial) {
+            const float x=random(LEFT+slot->radius,RIGHT-slot->radius);
+            float y=FLOOR-slot->radius;
+            for(const auto &c:coins_)if(c.active && c.sleeping) {
+                const float dx=x-c.x,r=slot->radius+c.radius;
+                if(std::abs(dx)<r)y=std::min(y,c.y-std::sqrt(r*r-dx*dx));
+            }
+            if(y>lowest) { lowest=y;slot->x=x; }
+        }
+    }
     slot->y=TOP-slot->radius-random(0,8);
     // Burst spawns form a separated queue above the clipped display area.
     for (const auto &c:coins_) if (c.active)
         slot->y=std::min(slot->y,c.y-c.radius-slot->radius-2.f);
-    slot->vx=random(-25,25); slot->vy=random(6,20);
+    slot->vx=crowded?random(-8,8):random(-25,25); slot->vy=random(6,20);
     slot->rotation=random(-3.14f,3.14f);
     slot->angularVelocity=random(3,8) * (random(0,1) > .5f ? 1 : -1);
     slot->restitution=random(.34f,.49f); slot->friction=random(.52f,.67f);
@@ -45,24 +62,68 @@ void CoinPhysicsEngine::rest_coin() {
     c.rotation=.2f; c.sleeping=true;
 }
 void CoinPhysicsEngine::set_count(unsigned count,bool animate_last) {
-    reset();
     count=std::min(count,MAX_COINS);
-    for(unsigned i=0;i<count;++i) {
-        const unsigned pair=i/13,within=i%13;
-        const bool inset=within>=7;
-        const unsigned row=pair*2+unsigned(inset),column=inset?within-7:within;
-        const float x=LEFT+(RIGHT-LEFT-14*MAX_RADIUS)/2+MAX_RADIUS
-                     +column*2*MAX_RADIUS+(inset?MAX_RADIUS:0);
-        const float y=FLOOR-MAX_RADIUS-row*1.7320508f*MAX_RADIUS;
-        if(animate_last && i+1==count) {
-            spawn();
-            coins_[i].x=x;coins_[i].vx=0;
-        } else {
-            auto &c=coins_[i];
-            c.active=c.sleeping=true;c.radius=MAX_RADIUS;c.x=x;c.y=y;
-            c.rotation=.2f;c.restitution=.4f;c.friction=.6f;c.order=++order_;
+    unsigned current=0;
+    for(const auto &c:coins_)current+=c.active;
+    if(animate_last && count==current+1) { spawn();return; }
+    reset();
+    const unsigned settled=count-(animate_last && count>0 ? 1U : 0U);
+    for(unsigned i=0;i<settled;++i) {
+        spawn();auto &c=coins_[i];
+        float best=-1e9f;
+        // A restart restores contact pockets directly instead of running seconds
+        // of simulation in the display task. Random radii and pocket choices keep
+        // the pile irregular. Each pocket rests on the floor, wall + coin, or two coins.
+        const auto consider=[&](float x,float y) {
+            if(x<LEFT+c.radius-.001f || x>RIGHT-c.radius+.001f || y>FLOOR-c.radius+.001f)return;
+            for(unsigned j=0;j<i;++j) {
+                const auto &b=coins_[j];const float dx=x-b.x,dy=y-b.y,r=c.radius+b.radius;
+                if(dx*dx+dy*dy<(r-.001f)*(r-.001f))return;
+            }
+            const float score=y+random(-2.f,2.f);
+            if(score>best) { best=score;c.x=x;c.y=y; }
+        };
+        consider(LEFT+c.radius,FLOOR-c.radius);
+        consider(RIGHT-c.radius,FLOOR-c.radius);
+        for(unsigned trial=0;trial<12;++trial)
+            consider(random(LEFT+c.radius,RIGHT-c.radius),FLOOR-c.radius);
+        for(unsigned j=0;j<i;++j) {
+            const auto &a=coins_[j];const float ra=c.radius+a.radius;
+            // Floor contacts beside a bottom coin, and contacts against either wall.
+            const float dy=FLOOR-c.radius-a.y;
+            if(std::abs(dy)<ra) {
+                const float dx=std::sqrt(ra*ra-dy*dy);
+                consider(a.x-dx,FLOOR-c.radius);consider(a.x+dx,FLOOR-c.radius);
+            }
+            for(const float x:{LEFT+c.radius,RIGHT-c.radius}) {
+                const float dx=x-a.x;
+                if(std::abs(dx)<ra)consider(x,a.y-std::sqrt(ra*ra-dx*dx));
+            }
+            for(unsigned k=j+1;k<i;++k) {
+                const auto &b=coins_[k];const float rb=c.radius+b.radius;
+                const float dx=b.x-a.x,dy=b.y-a.y,d=std::sqrt(dx*dx+dy*dy);
+                if(d<.001f || d>ra+rb || d<std::abs(ra-rb))continue;
+                const float along=(ra*ra-rb*rb+d*d)/(2*d);
+                const float height=std::sqrt(std::max(0.f,ra*ra-along*along));
+                const float x=a.x+along*dx/d,y=a.y+along*dy/d;
+                const auto pocket=[&](float px,float py) {
+                    if(py<std::min(a.y,b.y) && px>=std::min(a.x,b.x) && px<=std::max(a.x,b.x))consider(px,py);
+                };
+                pocket(x-height*dy/d,y+height*dx/d);
+                pocket(x+height*dy/d,y-height*dx/d);
+            }
         }
+        // A vertical drop still finds an exact support if no two-contact pocket fits.
+        if(best==-1e9f) {
+            c.y=FLOOR-c.radius;
+            for(unsigned j=0;j<i;++j) {
+                const auto &b=coins_[j];const float dx=c.x-b.x,r=c.radius+b.radius;
+                if(std::abs(dx)<r)c.y=std::min(c.y,b.y-std::sqrt(r*r-dx*dx));
+            }
+        }
+        c.vx=c.vy=c.angularVelocity=0;c.sleeping=true;c.quietTime=.35f;
     }
+    if(animate_last && count)spawn();
 }
 void CoinPhysicsEngine::supported(std::array<bool,MAX_COINS> &result) const {
     result.fill(false);
@@ -140,6 +201,7 @@ void CoinPhysicsEngine::substep(float h) {
             if (distance > .0001f) { nx=dx/distance; ny=dy/distance; }
             const float approach=(b.vx-a.vx)*nx+(b.vy-a.vy)*ny;
             const float penetration=radius-distance;
+            const bool restingA=a.sleeping && supports[i],restingB=b.sleeping && supports[j];
             if (approach < -28.f || penetration > .7f) {
                 if (a.sleeping) wake(a);
                 if (b.sleeping) wake(b);
@@ -153,15 +215,21 @@ void CoinPhysicsEngine::substep(float h) {
                 b.x+=nx*correction*massB; b.y+=ny*correction*massB;
             }
             if (approach < 0) {
+                // A settled, supported pile resists the initial downward hit as
+                // a group. Keep positional correction symmetric; side impacts
+                // and subsequent movement still use the normal free-coin mass.
+                const float impactA=massA*(restingA && std::abs(ny)>.5f ? .2f : 1.f);
+                const float impactB=massB*(restingB && std::abs(ny)>.5f ? .2f : 1.f);
+                const float impactSum=impactA+impactB;
                 const float restitution=approach < -35.f ? std::min(a.restitution,b.restitution) : 0;
-                const float impulse=-(1+restitution)*approach/massSum;
-                a.vx-=impulse*nx*massA; a.vy-=impulse*ny*massA;
-                b.vx+=impulse*nx*massB; b.vy+=impulse*ny*massB;
+                const float impulse=-(1+restitution)*approach/impactSum;
+                a.vx-=impulse*nx*impactA; a.vy-=impulse*ny*impactA;
+                b.vx+=impulse*nx*impactB; b.vy+=impulse*ny*impactB;
                 const float tangent=(b.vx-a.vx)*(-ny)+(b.vy-a.vy)*nx;
                 const float limit=std::min(a.friction,b.friction)*impulse;
-                const float friction=std::clamp(-tangent/massSum,-limit,limit);
-                a.vx-=friction*(-ny)*massA; a.vy-=friction*nx*massA;
-                b.vx+=friction*(-ny)*massB; b.vy+=friction*nx*massB;
+                const float friction=std::clamp(-tangent/impactSum,-limit,limit);
+                a.vx-=friction*(-ny)*impactA; a.vy-=friction*nx*impactA;
+                b.vx+=friction*(-ny)*impactB; b.vy+=friction*nx*impactB;
                 if (approach < -35.f) {
                     a.squash=std::max(a.squash,std::min(.1f,-approach/2200.f));
                     b.squash=std::max(b.squash,std::min(.1f,-approach/2200.f));

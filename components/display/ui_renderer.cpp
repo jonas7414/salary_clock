@@ -54,6 +54,21 @@ public:
             rect(start,row,end-start+1,1,color);
         }
     }
+    void tilted_ellipse(float x,float y,float rx,float ry,float cs,float sn,uint16_t color) {
+        if(rx<.5f || ry<.5f)return;
+        const float ax=1/(rx*rx),ay=1/(ry*ry);
+        const float a=cs*cs*ax+sn*sn*ay,b=cs*sn*(ax-ay),d=sn*sn*ax+cs*cs*ay;
+        const float extent=std::sqrt(rx*rx*sn*sn+ry*ry*cs*cs);
+        const int first=std::max({top,clip_top,int(std::floor(y-extent))});
+        const int last=std::min({bottom-1,clip_bottom-1,int(std::ceil(y+extent))});
+        for(int row=first;row<=last;++row) {
+            const float dy=row-y,center=-b*dy/a,span2=(1-d*dy*dy)/a+center*center;
+            if(span2<0)continue;
+            const float span=std::sqrt(span2);
+            const int start=int(std::ceil(x+center-span)),end=int(std::floor(x+center+span));
+            rect(start,row,end-start+1,1,color);
+        }
+    }
     void pixel(int x,int y,uint16_t color,uint8_t alpha=15) {
         if (theme==DisplayTheme::Handheld) alpha=alpha>=8?15:0;
         color=this->color(color);
@@ -174,30 +189,45 @@ const char *work_label(WorkState state) {
     }
 }
 void coin(Canvas &c,const Coin &coin) {
-    // Face-on at rest: visible circular rims meet where the physics colliders meet.
-    const float spin=coin.sleeping ? 0.f : std::min(1.f,std::abs(coin.angularVelocity)/3.f);
-    const float face=1.f-spin*(1.f-std::max(.35f,std::abs(std::cos(coin.rotation))));
+    // Keep the settled pose: tilted faces, milled edges and directional lighting
+    // give each small coin depth even after its physical motion has stopped.
+    const float spin=std::min(1.f,std::abs(coin.angularVelocity)/3.f);
+    const float turn=std::abs(std::cos(coin.rotation));
+    const float rest_face=.72f+.25f*turn;
+    const float face=rest_face-spin*(rest_face-.32f)*(1-turn);
+    const float roll=coin.rotation*.7f,cs=std::cos(roll),sn=std::sin(roll);
     const float rx=coin.radius*face*(1+coin.squash*.65f),ry=coin.radius*(1-coin.squash);
     const float height=std::max(0.f,CoinPhysicsEngine::FLOOR-coin.y-coin.radius);
     if (height>2) c.ellipse(coin.x,CoinPhysicsEngine::FLOOR+2,std::max(3.f,coin.radius-height*.08f),1,rgb(7,13,17));
-    c.ellipse(coin.x+1,coin.y+1,rx,ry,rgb(145,87,31));
-    c.ellipse(coin.x,coin.y,rx,ry,rgb(251,211,117));
-    c.ellipse(coin.x,coin.y,rx-1,ry-1,rgb(166,107,37));
-    c.ellipse(coin.x,coin.y,rx-2,ry-2,rgb(231,167,58));
-    c.ellipse(coin.x,coin.y-1,rx-3,ry-3,rgb(248,196,81));
-    // Short moving highlight arc, with an inset rim and a compressed dollar mark.
+    const auto disc=[&](float dx,float dy,float inset,uint16_t color) {
+        c.tilted_ellipse(coin.x+dx,coin.y+dy,rx-inset,ry-inset,cs,sn,color);
+    };
+    disc(1.5f,1.8f,0,rgb(92,49,18));
+    disc(.8f,1.f,0,rgb(174,108,33));
+    disc(0,0,0,rgb(255,218,124));
+    disc(0,0,1,rgb(145,85,25));
+    disc(0,0,2,rgb(228,158,44));
+    disc(-.3f,-.7f,3,rgb(255,202,86));
+    const auto point=[&](float x,float y,uint16_t color) {
+        c.pixel(int(std::lround(coin.x+cs*x-sn*y)),int(std::lround(coin.y+sn*x+cs*y)),color);
+    };
+    // Short rim highlights and edge grooves remain visible at 12-14 pixels.
     for (int i=0;i<14;++i) {
-        const float angle=-2.7f+i*.07f+std::sin(coin.rotation)*.22f;
-        c.pixel(int(coin.x+std::cos(angle)*(rx-1)),int(coin.y+std::sin(angle)*(ry-1)),INK);
+        const float angle=-2.7f+i*.07f-roll;
+        point(std::cos(angle)*(rx-.6f),std::sin(angle)*(ry-.6f),INK);
     }
-    if (face>.28f) {
-        const int cx=int(coin.x), cy=int(coin.y);
-        const int w=std::max(1,int(coin.radius*.25f*face)), h=std::max(3,int(coin.radius*.5f));
-        const auto ink=rgb(147,88,26);
-        c.rect(cx,cy-h-1,1,h*2+3,ink);
-        c.rect(cx-w,cy-h,w*2+1,1,ink);c.rect(cx-w,cy-h,1,h,ink);
-        c.rect(cx-w,cy,w*2+1,1,ink);c.rect(cx+w,cy,1,h,ink);
-        c.rect(cx-w,cy+h,w*2+1,1,ink);
+    for(int i=0;i<4;++i) {
+        const float angle=.15f+i*.55f-roll;
+        const float x=std::cos(angle)*rx,y=std::sin(angle)*ry;
+        c.pixel(int(std::lround(coin.x+cs*x-sn*y+1.3f)),int(std::lround(coin.y+sn*x+cs*y+1.5f)),rgb(104,61,20));
+    }
+    if (face>.4f) {
+        const int w=std::max(1,int(coin.radius*.25f)),h=std::max(2,int(coin.radius*.43f));
+        const auto ink=rgb(139,79,23);
+        for(int y=-h-1;y<=h+1;++y)point(0,float(y),ink);
+        for(int x=-w;x<=w;++x)for(int y:{-h,0,h})point(x*face,float(y),ink);
+        for(int y=-h;y<0;++y)point(-w*face,float(y),ink);
+        for(int y=0;y<=h;++y)point(w*face,float(y),ink);
     }
 }
 void boot_scene(Canvas &c,const UiModel &m) {

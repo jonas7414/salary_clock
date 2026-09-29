@@ -84,7 +84,9 @@ flowchart TD
 
 `UiAnimation` 以 `floor(worked_seconds × 52 / daily_work_seconds)` 決定今日金幣數（上限 52），不再以收入整數增加觸發循環掉幣。尚未上班、休假、無有效時間或缺日曆時為零；午休維持當前進度，最後一枚在完成當日工時時才出現，下班頁保留滿金幣。
 
-金幣直徑 15 px，以七枚／六枚交錯的八行填滿動畫區。`CoinPhysicsEngine::set_count()` 恢復已有工時的穩定排列，一般跨越單枚門檻時只讓新增的一枚落下；重啟、跨日、時間跳動與校時回退則重建符合快照的枚數，不補播大量掉幣。動畫只讀取薪資 snapshot，不改計薪、NVS 或跨 task 同步契約。較大的金幣狀態由 display task 專用的 static 物件持有，避免占滿 8 KiB task stack，無須 PSRAM。
+金幣直徑隨機為 12–14 px，幣面保留不同傾角、厚邊與光影。`CoinPhysicsEngine::set_count()` 在一般單枚增量時保留全部舊金幣，只新增隨機落點、速度與旋轉的金幣，由碰撞求解自然堆積；接近滿堆時偏向較低的落點，避免金幣堆到畫面外。靜止且受支撐的堆疊在首次承受向下撞擊時採較大的有效質量，使新幣回彈清楚，側向撞擊仍能推動鄰幣。
+
+重啟、跨日、時間跳動與校時回退時，按快照枚數重新產生有支撐、不重疊的不規則堆疊：以地面、牆邊或兩枚金幣間的接觸位置還原，不在 display task 補跑長時間物理模擬。動畫只讀取薪資 snapshot，不改計薪、NVS 或跨 task 同步契約。金幣狀態由 display task 專用的 static 物件持有，避免占滿 8 KiB task stack，無須 PSRAM。
 
 核心：[salary_math.cpp](../components/app_core/salary_math.cpp)。每天薪資 = 目前月薪 ÷ 當月政府行事曆工作日數；每秒薪資 = 每日薪資 ÷ 上午與下午工作秒數。午休、休假及非工作時間不增加今日金額。
 

@@ -37,6 +37,8 @@ python -m unittest discover -s tests -p test_release_tools.py -v
 
 `test_host.py` 執行行事曆資料驗證、Python 行事曆測試及 C++ 薪資／頁面／按鈕／RTC／NVS／JSON／OTA 等測試，並生成 `.artifacts/host` 圖片。可用 `--cxx clang++`，或依工具 help 使用 Zig；Windows MSVC 參數不同，不能直接把 `cl` 傳給此 GCC 參數格式的 runner。
 
+Runner 以 `-UNDEBUG` 保持 C++ `assert` 有效，避免 Zig 的最佳化組態停用斷言，造成測試未實際執行或未使用變數錯誤。
+
 AP 頁面測試需 Node.js、Playwright 與 Chrome，可在本機工具目錄安裝依賴而不改韌體專案：
 
 ```sh
@@ -70,7 +72,30 @@ g++ -std=c++17 -O2 -pthread -Icomponents/app_core/include -Icomponents/display/i
 python tools/package_page_previews.py
 ```
 
-最後一步需要 `.artifacts/fonts/NotoSansTC[wght].ttf` 與 Pillow。輸出 `.artifacts/all-pages/index.html`、三種主題總覽、對照總覽、各頁 PNG 與原生 320×170 PNG。HTML 可直接以瀏覽器開啟；預覽使用固定示例日期、月薪與系統資訊，非裝置即時狀態。修改後重新執行，不要交付過期圖片。
+最後一步需要 Noto Sans TC 字型與 Pillow；預設字型路徑為 `.artifacts/fonts/NotoSansTC[wght].ttf`，也可用 `--font /path/to/NotoSansTC.ttf` 指定。輸出 `.artifacts/all-pages/index.html`、三種主題總覽、對照總覽、各頁 PNG 與原生 320×170 PNG。HTML 可直接以瀏覽器開啟；預覽使用固定示例日期 2026/09/23、月薪 NT$40,000 與系統資訊，非裝置即時狀態。修改後重新執行，不要交付過期圖片。
+
+### 更新 README 與使用手冊的 demo
+
+先完成上述 `test_host.py`（生成情境動畫）與 `render_pages`（生成八頁 × 三種主題），再執行：
+
+```sh
+python tools/package_page_previews.py --font /path/to/NotoSansTC.ttf --docs
+```
+
+若本機已備有 `.tools/assets/NotoSansTC.ttf`，可將它傳給 `--font`。`--docs` 將八項展示素材複製到 `docs/`，另產生工時金幣對照圖，並輸出 14 張操作插圖到 `docs/images/manual/`：
+
+| 文件素材 | 來源與用途 |
+| --- | --- |
+| `screens.png` | `all_pages_0.png`：經典原版八頁總覽，依預設順序排列 |
+| `themes.png` | `all_pages_comparison.png`：全部八頁的三主題對照 |
+| `boot.gif` | `boot_0.gif`：經典原版開機動畫，版本由 `version.txt` 傳入測試建置 |
+| `coin_physics.gif`、`stack_settled.png` | 工作時金幣動畫與堆疊近照 |
+| `lunch.gif`、`rest.gif`、`holiday.gif` | 午休動畫、下班滿金幣靜態畫面及休假動畫 |
+| `coin_progress.png` | 0%、25%、50%、75%、100% 工時的三主題對照，由真實薪資快照產生 |
+
+手冊插圖包含設定與校時等待、紀念日、亮度調整／儲存、更新提示／下載進度、電池／外部供電、收入、費率、到職累積、休假倒數及三主題對照。`render_pages` 另外產生八個 `manual_*.ppm` 情境與 15 個 `progress_*.ppm` 工時情境，並檢查所有輸出的整幀／strip 一致性。金幣 GIF 使用正常時間，示範 14:00 新增第 26 枚，不使用加速掉幣。更新提示中的 v1.4.8 是固定模擬版本，不代表已發布；手冊圖說也必須保留此說明。
+
+這些素材使用真實 C++ 繪圖程式與固定測試輸入。主機測試涵蓋整幀／strip 一致性，但不代表已驗證實板流暢度、供電、Wi-Fi 或 OTA。發布文件前檢視三種主題的八頁、動畫及手冊插圖；只納入上述文件素材，不提交整個 `.artifacts/`。操作說明集中在 [使用手冊](user-manual.md)，README 保留簡介與快速開始。
 
 ## 發版
 

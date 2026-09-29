@@ -353,15 +353,51 @@ static void physics_tests() {
     const auto y=a.coins()[0].y;a.update(-1);a.update(std::numeric_limits<float>::quiet_NaN());CHECK(a.coins()[0].y==y);
     CoinPhysicsEngine fast(5),slow(5);fast.spawn();slow.spawn();for(int i=0;i<30;++i)fast.update(1.f/30);for(int i=0;i<20;++i)slow.update(.05f);
     CHECK(std::abs(fast.coins()[0].y-slow.coins()[0].y)<4);
-    UiAnimation anim(45);auto s=at(config_defaults(),11,59,59);anim.update(s,0,.04f);const auto n=count(anim.physics());
-    s=at(config_defaults(),12,0);for(int i=0;i<500;++i)anim.update(s,i*40000LL,.04f);CHECK(count(anim.physics())==n);
-    s=at(config_defaults(),17,59,59);anim.update(s,30000000,.04f);const auto before_end=count(anim.physics());
-    s=at(config_defaults(),18,0);anim.update(s,31000000,.04f);
-    CHECK(count(anim.physics())==before_end);
-    anim.update(s,40000000,.04f);CHECK(count(anim.physics())==before_end);
-    s=at(config_defaults(),17,59,59);anim.update(s,41000000,.04f);const auto resumed=count(anim.physics());
-    s=at(config_defaults(),18,0);anim.update(s,42000000,.04f);CHECK(count(anim.physics())==resumed);
-    UiAnimation boot;boot.update(s,0,.04f);CHECK(count(boot.physics())==0);
+    // Coin milestones depend only on completed work, including lunch and restarts.
+    const auto config=config_defaults();
+    CHECK(work_coin_count(at(config,9,0))==0);
+    CHECK(work_coin_count(at(config,11,0))==MAX_COINS/4);
+    CHECK(work_coin_count(at(config,14,0))==MAX_COINS/2);
+    CHECK(work_coin_count(at(config,16,0))==MAX_COINS*3/4);
+    CHECK(work_coin_count(at(config,17,59,59))==MAX_COINS-1);
+    CHECK(work_coin_count(at(config,18,0))==MAX_COINS);
+    for(unsigned n=1;n<=MAX_COINS;++n) {
+        auto milestone=at(config,10,0);
+        const unsigned threshold=(uint64_t(n)*milestone.daily_work_seconds+MAX_COINS-1)/MAX_COINS;
+        milestone.worked_seconds=threshold-1;CHECK(work_coin_count(milestone)==n-1);
+        milestone.worked_seconds=threshold;CHECK(work_coin_count(milestone)==n);
+    }
+    AppConfig custom=config;custom.monthly_salary=1;custom.work_start=8*60;
+    custom.lunch_start=11*60;custom.lunch_end=12*60;custom.work_end=16*60;
+    CHECK(work_coin_count(at(custom,10,0))==2*MAX_COINS/7);
+    custom.monthly_salary=1000000000;
+    CHECK(work_coin_count(at(custom,10,0))==2*MAX_COINS/7);
+    UiAnimation anim(45);auto s=at(config,12,0);anim.update(s,0,.04f);
+    const auto lunch_count=count(anim.physics());
+    CHECK(lunch_count==3*MAX_COINS/8);
+    for(int i=0;i<500;++i)anim.update(at(config,12,59,59),i*40000LL,.04f);
+    CHECK(count(anim.physics())==lunch_count);
+    anim.update(at(config,14,0),30000000,.04f);CHECK(count(anim.physics())==MAX_COINS/2);
+    s=at(config,14,0);s.earned_money*=10;
+    anim.update(s,30500000,.04f);CHECK(count(anim.physics())==MAX_COINS/2);
+    anim.update(s,9000000000LL,.04f);CHECK(count(anim.physics())==MAX_COINS/2); // Wall time alone cannot mint coins.
+    anim.update(at(config,17,59,59),31000000,.04f);CHECK(count(anim.physics())==MAX_COINS-1);
+    s=at(config,18,0);anim.update(s,32000000,.04f);CHECK(count(anim.physics())==MAX_COINS);
+    for(int i=0;i<200;++i)anim.update(s,33000000+i*40000LL,.04f);
+    const auto full=anim.physics().coins();
+    for(const auto &c:full)CHECK(c.y-c.radius>=CoinPhysicsEngine::TOP && c.sleeping);
+    anim.update(s,50000000,.04f);
+    for(unsigned i=0;i<MAX_COINS;++i)CHECK(anim.physics().coins()[i].order==full[i].order);
+    anim.update(at(config,11,0),51000000,.04f);CHECK(count(anim.physics())==MAX_COINS/4); // Clock correction.
+    anim.update(at(config,9,0,0,24),52000000,.04f);CHECK(count(anim.physics())==0); // New workday.
+    anim.update(at(config,12,0,0,25),53000000,.04f);CHECK(count(anim.physics())==0); // Holiday.
+    UiAnimation boot;boot.update(s,0,.04f);CHECK(count(boot.physics())==MAX_COINS);
+    for(const auto &c:boot.physics().coins())CHECK(c.sleeping && c.y-c.radius>=CoinPhysicsEngine::TOP);
+    SalaryStatus unavailable{};unavailable.worked_seconds=100;
+    CHECK(work_coin_count(unavailable)==0);
+    unavailable=s;unavailable.work_state=WORK_STATE_NO_CALENDAR;CHECK(work_coin_count(unavailable)==0);
+    unavailable=s;unavailable.daily_work_seconds=0;CHECK(work_coin_count(unavailable)==0);
+
 }
 static void money_gain_tests() {
     UiAnimation animation;
@@ -433,7 +469,7 @@ static void transition_tests() {
     holiday.update(at(config,0,0,0,26),7000000,.04f);CHECK(holiday.transition_state()==WORK_STATE_DAY_OFF);
     UiAnimation holiday_boot;holiday_boot.update(at(config,12,0,0,28),0,.04f);
     CHECK(holiday_boot.transition_state()==WORK_STATE_DAY_OFF);
-    CHECK(holiday_boot.gain_money()==0 && count(holiday_boot.physics())==1);
+    CHECK(holiday_boot.gain_money()==0 && count(holiday_boot.physics())==0);
 }
 static void ppm(const std::string &path,const std::vector<uint16_t> &frame) {
     std::ofstream out(path,std::ios::binary);out<<"P6\n320 170\n255\n";
@@ -441,6 +477,7 @@ static void ppm(const std::string &path,const std::vector<uint16_t> &frame) {
 }
 static void boot_render_tests(const char *directory) {
     UiModel m{};m.config=config_defaults();m.salary=at(m.config,14,37);
+    CoinPhysicsEngine earned;earned.set_count(work_coin_count(m.salary));m.physics=&earned;
     std::strcpy(m.firmware,APP_FIRMWARE_VERSION);std::strcpy(m.ssid,"Office Wi-Fi");
     std::strcpy(m.date,"2026/09/24");std::strcpy(m.clock,"14:37:00");
     std::vector<uint16_t> full(320*170),strip(320*170),guard(320*10+2,0x55aa);
@@ -501,19 +538,16 @@ static void render_tests(const char *directory) {
     std::strcpy(m.ssid,"Office Wi-Fi");std::strcpy(m.ip,"192.168.1.25");std::strcpy(m.idf,"v5.5.0");std::strcpy(m.firmware,APP_FIRMWARE_VERSION);
     m.rssi=-53;m.free_heap=110000;m.free_psram=7300000;m.uptime=2451;
     CoinPhysicsEngine p(17);
-    const auto pile=[&]() {
-        p.reset();
-        for(unsigned i=0;i<12;++i) { p.spawn(); for(int step=0;step<40;++step)p.update(.04f); }
-        for(int step=0;step<200;++step)p.update(.04f);
-    };
-    pile();p.spawn();for(int i=0;i<9;++i)p.update(.04f);m.physics=&p;
+    const auto pile=[&]() {p.set_count(work_coin_count(m.salary));};
+    pile();m.physics=&p;
     std::vector<uint16_t> full(320*170),strip(320*170),guard(320*10+2,0x55aa);
     for(int scene=0;scene<11;++scene) {
         m.page=scene<4?scene:0;m.system=scene==4?SYSTEM_SETUP_MODE:SYSTEM_RUNNING;m.synced=scene!=5;m.held_ms=0;
-        if(scene==6){m.salary=at(m.config,8,43,22);std::strcpy(m.clock,"08:43:22");p.rest_coin();}
+        if(scene==6){m.salary=at(m.config,8,43,22);std::strcpy(m.clock,"08:43:22");}
         if(scene==7){m.salary=at(m.config,12,30);std::strcpy(m.clock,"12:30:00");pile();}
         if(scene==8){m.salary=at(m.config,18,0);std::strcpy(m.clock,"18:00:00");}
-        if(scene==9){m.salary=at(m.config,12,0,0,26);std::strcpy(m.date,"2026/09/26");std::strcpy(m.clock,"12:00:00");p.rest_coin();}
+        if(scene==9){m.salary=at(m.config,12,0,0,26);std::strcpy(m.date,"2026/09/26");std::strcpy(m.clock,"12:00:00");}
+        pile();
         if(scene==10)m.held_ms=7000;
         std::vector<uint16_t> classic;
         for (int theme=0;theme<3;++theme) {
@@ -533,20 +567,24 @@ static void render_tests(const char *directory) {
     }
     m.synced=true;m.held_ms=0;m.page=0;p.reset();
     std::strcpy(m.date,"2026/09/23");
-    // Faster spawn cadence for a short demonstration; physics still uses 25 FPS.
+    // Show one real 8-hour-day milestone: the 26th coin arrives at 14:00.
+    UiAnimation work_animation(17);
     for(int i=0;i<400;++i) {
-        if(i%18==0 && i/18<int(MAX_COINS))p.spawn();
-        p.update(.04f);m.salary=at(m.config,10,0,i/25);
-        std::snprintf(m.clock,sizeof(m.clock),"10:00:%02d",i/25);
+        const int seconds=13*3600+59*60+58+i/25;
+        m.salary=at(m.config,seconds/3600,seconds/60%60,seconds%60);
+        work_animation.update(m.salary,i*40000LL,.04f);m.physics=&work_animation.physics();
+        std::snprintf(m.clock,sizeof(m.clock),"%02d:%02d:%02d",seconds/3600,seconds/60%60,seconds%60);
         ui_render(full.data(),0,170,m);ppm(std::string(directory)+"/coin_"+std::to_string(i)+".ppm",full);
     }
-    ppm(std::string(directory)+"/stack_settled.ppm",full);
+    m.salary=at(m.config,18,0);std::strcpy(m.clock,"18:00:00");pile();m.physics=&p;
+    ui_render(full.data(),0,170,m);ppm(std::string(directory)+"/stack_settled.ppm",full);
     // Exercise every animation frame through both framebuffer paths, with the
     // salary and clock held still to verify motion uses its own frame timestamp.
     for (int scene=0;scene<3;++scene) {
         m.salary=at(m.config,scene==1?18:12,0,0,scene==2?25:23);
         std::strcpy(m.clock,scene==1?"18:00:00":"12:00:00");
         std::strcpy(m.date,scene==2?"2026/09/25":"2026/09/23");
+        pile();
         std::vector<uint16_t> first;
         bool moved=false;
         for (int frame=0;frame<(scene?100:120);++frame) {
@@ -565,9 +603,9 @@ static void render_tests(const char *directory) {
             CHECK(outside_unchanged);
             ppm(std::string(directory)+(scene==2?"/holiday_":scene==1?"/rest_":"/lunch_")+std::to_string(frame)+".ppm",full);
         }
-        CHECK(moved);
-        // Hidden coins must never leak into the meal/rest scenes.
-        m.physics=nullptr;ui_render(strip.data(),0,170,m);CHECK(full==strip);m.physics=&p;
+        CHECK(scene==1 ? !moved : moved); // After work keeps the completed pile.
+        m.physics=nullptr;ui_render(strip.data(),0,170,m);
+        CHECK(scene==1 ? full!=strip : full==strip);m.physics=&p;
     }
     // Check popup motion, its bounds, theme palette and both rendering paths.
     m.salary=at(m.config,14,37,21);std::strcpy(m.clock,"14:37:21");m.physics=nullptr;

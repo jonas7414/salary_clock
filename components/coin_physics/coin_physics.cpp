@@ -44,6 +44,26 @@ void CoinPhysicsEngine::rest_coin() {
     c.x=258; c.y=FLOOR-c.radius; c.vx=c.vy=c.angularVelocity=0;
     c.rotation=.2f; c.sleeping=true;
 }
+void CoinPhysicsEngine::set_count(unsigned count,bool animate_last) {
+    reset();
+    count=std::min(count,MAX_COINS);
+    for(unsigned i=0;i<count;++i) {
+        const unsigned pair=i/13,within=i%13;
+        const bool inset=within>=7;
+        const unsigned row=pair*2+unsigned(inset),column=inset?within-7:within;
+        const float x=LEFT+(RIGHT-LEFT-14*MAX_RADIUS)/2+MAX_RADIUS
+                     +column*2*MAX_RADIUS+(inset?MAX_RADIUS:0);
+        const float y=FLOOR-MAX_RADIUS-row*1.7320508f*MAX_RADIUS;
+        if(animate_last && i+1==count) {
+            spawn();
+            coins_[i].x=x;coins_[i].vx=0;
+        } else {
+            auto &c=coins_[i];
+            c.active=c.sleeping=true;c.radius=MAX_RADIUS;c.x=x;c.y=y;
+            c.rotation=.2f;c.restitution=.4f;c.friction=.6f;c.order=++order_;
+        }
+    }
+}
 void CoinPhysicsEngine::supported(std::array<bool,MAX_COINS> &result) const {
     result.fill(false);
     for (unsigned i=0;i<MAX_COINS;++i)
@@ -173,7 +193,7 @@ void CoinPhysicsEngine::substep(float h) {
 void CoinPhysicsEngine::update(float dt) {
     if (!std::isfinite(dt) || dt <= 0) return;
     dt=std::min(dt,.05f);
-    // At most 12 small steps and 120 pairs/pass; no heap allocation in a frame.
+    // At most 12 small steps; fixed-capacity storage, no frame heap allocation.
     const int steps=static_cast<int>(std::ceil(dt / (1.f/240.f)));
     const float h=dt/steps;
     for (int step=0;step<steps;++step) substep(h);

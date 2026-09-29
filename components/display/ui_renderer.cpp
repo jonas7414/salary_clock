@@ -26,7 +26,7 @@ public:
             if (value==INK || value==GOLD || value==GREEN) return rgb(38,58,32);
             if (value==MUTED) return rgb(81,109,54);
         }
-        // Tint the existing coin, whole burger and sleeping cat with the theme.
+        // Tint the existing coin and whole burger with the theme.
         const unsigned light=(((value>>11)&31)*77/31+((value>>5)&63)*150/63+(value&31)*29/31);
         if (theme==DisplayTheme::Amber) {
             return light<50?rgb(35,24,9):light<120?rgb(137,86,28):light<190?rgb(226,147,45):rgb(255,219,149);
@@ -282,44 +282,6 @@ void holiday_scene(Canvas &c,uint32_t milliseconds) {
     c.rect(234,117,24,4,cloth);
     for (int i=0;i<9;++i) {
         c.rect(235-i/2,120+i,2,1,MUTED);c.rect(254+i/2,120+i,2,1,MUTED);
-    }
-}
-void rest_scene(Canvas &c,uint32_t milliseconds) {
-    const float phase=float(milliseconds%4000)/4000.f;
-    const float breath=.5f-.5f*std::cos(phase*6.2831853f);
-    const auto fur=rgb(222,169,106), highlight=rgb(245,200,139), stripe=rgb(177,118,66);
-    const auto cushion=rgb(69,116,132), cushion_light=rgb(95,149,158);
-    // Crescent moon, cushion and a sleeping cat with a slow breathing motion.
-    c.ellipse(227,52,10,10,GOLD);c.ellipse(231,48,9,9,BG);
-    c.pixel(248,45,MUTED);c.pixel(297,67,MUTED);
-    c.ellipse(261,135,44,4,rgb(7,13,17));
-    c.ellipse(261,129,44,8,cushion);c.ellipse(261,126,42,6,cushion_light);
-    c.ellipse(266,111-breath,32,18+breath,fur);
-    c.ellipse(263,117,23,10,highlight);
-    for (int x=262;x<=278;x+=8) c.ellipse(float(x),98-breath,2,4,stripe);
-    c.ellipse(282,115,14,12,stripe);c.ellipse(282,113,13,11,fur);
-    c.ellipse(283,113,7,6,stripe);c.ellipse(281,111,7,5,fur);
-    const int head_y=106-int(std::lround(breath));
-    for (int row=0;row<15;++row) {
-        c.rect(225-row/3,head_y-24+row,2+row,1,fur);
-        c.rect(248-row/2,head_y-24+row,2+row/2,1,fur);
-    }
-    for (int row=0;row<8;++row) {
-        c.rect(226,head_y-19+row,1+row/2,1,rgb(201,130,103));
-        c.rect(247-row/3,head_y-19+row,1+row/3,1,rgb(201,130,103));
-    }
-    c.ellipse(237,float(head_y),19,15,fur);
-    c.ellipse(238,float(head_y+6),12,7,highlight);
-    for (int x:{227,241}) {
-        c.rect(x,head_y-1,2,2,stripe);c.rect(x+2,head_y+1,5,2,stripe);
-        c.rect(x+7,head_y-1,2,2,stripe);
-    }
-    c.rect(237,head_y+6,3,2,stripe);c.rect(238,head_y+8,1,2,stripe);
-    c.rect(219,head_y+5,7,1,stripe);c.rect(219,head_y+8,6,1,stripe);
-    c.ellipse(240,123,8,4,highlight);c.ellipse(256,124,7,3,highlight);
-    for (int i=0;i<3;++i) {
-        const float drift=std::fmod(phase+float(i)/3.f,1.f);
-        c.text(259+int(drift*31),78-int(drift*35),"Z",drift<.5f?10:12,drift>.8f?MUTED:INK);
     }
 }
 void header(Canvas &c,const UiModel &m) {
@@ -616,7 +578,6 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
             scene_frame(c,m);
             if (m.salary.work_state==WORK_STATE_DAY_OFF) holiday_scene(c,m.animation_ms);
             else if (m.salary.work_state==WORK_STATE_LUNCH) lunch_scene(c,m.animation_ms);
-            else if (m.salary.work_state==WORK_STATE_AFTER_WORK) rest_scene(c,m.animation_ms);
             else {
                 // Small scale marks keep the pile within a quiet instrument-like area.
                 for (int y=51;y<140;y+=22) c.rect(307,y,5,1,LINE);

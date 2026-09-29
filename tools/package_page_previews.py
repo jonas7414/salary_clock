@@ -1,12 +1,18 @@
 """Package render_pages.cpp outputs as labeled contact sheets and a local gallery."""
+import argparse
 from pathlib import Path
+import shutil
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / ".artifacts/all-pages"
-FONT = ROOT / ".artifacts/fonts/NotoSansTC[wght].ttf"
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--font", type=Path, default=ROOT / ".artifacts/fonts/NotoSansTC[wght].ttf", help="Noto Sans TC font path")
+parser.add_argument("--docs", action="store_true", help="Refresh the curated README/manual demo assets in docs/")
+args = parser.parse_args()
+FONT = args.font
 names = ["今日偷薪", "還能偷多少", "本月戰績", "這份工作撈多少", "現在時刻", "休假倒數", "亮度調整", "系統資訊"]
-themes = ["CLASSIC 原始主題", "AMBER 琥珀終端", "HANDHELD 復古掌機"]
+themes = ["CLASSIC 經典原版", "AMBER 琥珀終端", "HANDHELD 復古掌機"]
 font = ImageFont.truetype(str(FONT), 22)
 small = ImageFont.truetype(str(FONT), 18)
 overview = Image.new("RGB", (1980, 3230), "#e8ecee")
@@ -40,3 +46,44 @@ for theme,label in enumerate(themes):
     html.append('</section>')
 (OUT / 'index.html').write_text('\n'.join(html), encoding='utf-8')
 print(OUT / 'index.html')
+if args.docs:
+    docs = ROOT / "docs"
+    host = ROOT / ".artifacts/host"
+    manual = docs / "images/manual"
+    manual.mkdir(parents=True, exist_ok=True)
+    scenes = ["setup", "waiting", "brightness_edit", "brightness_saved", "anniversary",
+              "update_prompt", "update_progress", "usb_power"]
+    for name in scenes:
+        with Image.open(OUT / f"manual_{name}.ppm") as raw:
+            raw.resize((640, 340), Image.Resampling.NEAREST).save(manual / f"{name}.png")
+    for name, page in (("income", 1), ("rates", 3), ("job_total", 4), ("holiday", 6), ("system", 8)):
+        shutil.copyfile(OUT / f"theme_0_page_{page}.png", manual / f"{name}.png")
+    theme_strip = Image.new("RGB", (1000, 210), "#e8ecee")
+    theme_draw = ImageDraw.Draw(theme_strip)
+    for theme, label in enumerate(themes):
+        theme_draw.text((10 + theme * 330, 6), label, font=small, fill="#182930")
+        with Image.open(OUT / f"theme_{theme}_page_1.ppm") as raw:
+            theme_strip.paste(raw, (10 + theme * 330, 34))
+    theme_strip.save(manual / "themes.png")
+    progress = Image.new("RGB", (1000, 1060), "#e8ecee")
+    progress_draw = ImageDraw.Draw(progress)
+    for theme, label in enumerate(themes):
+        progress_draw.text((10 + theme * 330, 6), label, font=small, fill="#182930")
+        for step, percent in enumerate((0, 25, 50, 75, 100)):
+            x, y = 10 + theme * 330, 38 + step * 204
+            progress_draw.text((x, y), f"{percent}% / {'滿金幣' if percent == 100 else '工時進度'}", font=small, fill="#182930")
+            with Image.open(OUT / f"progress_{theme}_{step}.ppm") as raw:
+                progress.paste(raw, (x, y + 28))
+    progress.save(docs / "coin_progress.png")
+    assets = {OUT / "all_pages_0.png": docs / "screens.png",
+              OUT / "all_pages_comparison.png": docs / "themes.png",
+              host / "boot_0.gif": docs / "boot.gif"}
+    for name in ("coin_physics.gif", "stack_settled.png", "lunch.gif", "rest.gif", "holiday.gif"):
+        assets[host / name] = docs / name
+    missing = [str(source) for source in assets if not source.is_file()]
+    if missing:
+        raise SystemExit("Run tools/test_host.py and render_pages first. Missing: " + ", ".join(missing))
+    for source, target in assets.items():
+        shutil.copyfile(source, target)
+    print(f"Refreshed {len(assets)} documentation demo assets in {docs}")
+    print(f"Refreshed 14 manual illustrations in {manual}")

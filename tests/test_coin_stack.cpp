@@ -31,12 +31,30 @@ static void check_geometry(const CoinPhysicsEngine &engine,float tolerance) {
         }
     }
 }
-static Coin resting(float x,float y,float radius=10) {
+static Coin resting(float x,float y,float radius=CoinPhysicsEngine::MAX_RADIUS) {
     Coin coin{}; coin.active=true; coin.sleeping=true;
     coin.x=x; coin.y=y; coin.radius=radius; coin.restitution=.4f; coin.friction=.6f;
     return coin;
 }
 int main() {
+    // Every restored milestone fits inside the visible area without overlap.
+    CoinPhysicsEngine progress(7);
+    for(unsigned count=0;count<=MAX_COINS;++count) {
+        progress.set_count(count);check_geometry(progress,.01f);
+        unsigned active=0;
+        for(const auto &coin:progress.coins())if(coin.active) {
+            ++active;CHECK(coin.sleeping && coin.y-coin.radius>=CoinPhysicsEngine::TOP);
+        }
+        CHECK(active==count);
+    }
+    // A newly earned coin falls onto each row while the previous work is retained.
+    for(unsigned count:{1U,7U,8U,13U,14U,26U,39U,MAX_COINS}) {
+        progress.set_count(count,true);CHECK(!progress.coins()[count-1].sleeping);
+        advance(progress,8);check_geometry(progress,.2f);
+        for(const auto &coin:progress.coins())if(coin.active)
+            CHECK(coin.sleeping && coin.y-coin.radius>=CoinPhysicsEngine::TOP);
+    }
+
     CoinPhysicsEngine boundaries(42);
     for (unsigned i=0;i<MAX_COINS+7;++i) boundaries.spawn();
     for (unsigned frame=0;frame<2000;++frame) {
@@ -80,21 +98,21 @@ int main() {
     }
     // Removing support wakes all coins above it, including an entire column.
     CoinPhysicsEngine removed(4);
-    fixture(removed)[0]=resting(250,129);
-    fixture(removed)[1]=resting(250,109);
-    fixture(removed)[2]=resting(250,89);
+    fixture(removed)[0]=resting(250,131.5f);
+    fixture(removed)[1]=resting(250,116.5f);
+    fixture(removed)[2]=resting(250,101.5f);
     fixture(removed)[0].active=false;
     removed.update(.04f);
     CHECK(!removed.coins()[1].sleeping && !removed.coins()[2].sleeping);
-    CHECK(removed.coins()[1].y>109 && removed.coins()[2].y>89);
+    CHECK(removed.coins()[1].y>116.5f && removed.coins()[2].y>101.5f);
     advance(removed,4);
     CHECK(removed.coins()[1].sleeping && removed.coins()[2].sleeping);
     check_geometry(removed,.2f);
 
     // A hard impact wakes its sleeping target and transfers lateral momentum.
     CoinPhysicsEngine hit(9);
-    fixture(hit)[0]=resting(260,129);
-    fixture(hit)[1]=resting(236,125);
+    fixture(hit)[0]=resting(260,131.5f);
+    fixture(hit)[1]=resting(240,127.5f);
     fixture(hit)[1].sleeping=false; fixture(hit)[1].vx=180; fixture(hit)[1].vy=20;
     bool woke=false,moved=false;
     for (unsigned frame=0;frame<40;++frame) {

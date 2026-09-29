@@ -1,6 +1,15 @@
 #pragma once
 #include "app_types.h"
 #include "coin_physics.h"
+// Integer thresholds prevent the final coin from appearing before work ends.
+inline unsigned work_coin_count(const SalaryStatus &salary) {
+    const auto state=salary.work_state;
+    if (!salary.daily_work_seconds ||
+        (state!=WORK_STATE_WORKING_MORNING && state!=WORK_STATE_WORKING_AFTERNOON &&
+         state!=WORK_STATE_LUNCH && state!=WORK_STATE_AFTER_WORK)) return 0;
+    if (salary.worked_seconds>=salary.daily_work_seconds) return MAX_COINS;
+    return unsigned(uint64_t(salary.worked_seconds)*MAX_COINS/salary.daily_work_seconds);
+}
 // Display-only startup timeline. Wi-Fi/time tasks continue independently.
 class BootAnimation {
 public:
@@ -28,7 +37,7 @@ private:
     WorkState previous_{WORK_STATE_NO_TIME};
     int date_{};
     double last_earned_{};
-    int64_t last_spawn_{};
+    unsigned coin_count_{};
     float pulse_{};
     bool initialized_{};
     double gain_money_{};

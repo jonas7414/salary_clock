@@ -82,6 +82,10 @@ flowchart TD
 
 ## 薪資與日期
 
+`UiAnimation` 以 `floor(worked_seconds × 52 / daily_work_seconds)` 決定今日金幣數（上限 52），不再以收入整數增加觸發循環掉幣。尚未上班、休假、無有效時間或缺日曆時為零；午休維持當前進度，最後一枚在完成當日工時時才出現，下班頁保留滿金幣。
+
+金幣直徑 15 px，以七枚／六枚交錯的八行填滿動畫區。`CoinPhysicsEngine::set_count()` 恢復已有工時的穩定排列，一般跨越單枚門檻時只讓新增的一枚落下；重啟、跨日、時間跳動與校時回退則重建符合快照的枚數，不補播大量掉幣。動畫只讀取薪資 snapshot，不改計薪、NVS 或跨 task 同步契約。較大的金幣狀態由 display task 專用的 static 物件持有，避免占滿 8 KiB task stack，無須 PSRAM。
+
 核心：[salary_math.cpp](../components/app_core/salary_math.cpp)。每天薪資 = 目前月薪 ÷ 當月政府行事曆工作日數；每秒薪資 = 每日薪資 ÷ 上午與下午工作秒數。午休、休假及非工作時間不增加今日金額。
 
 到職累積由 `calculate_salary(..., job_start_date)` 同時計算，預設 `2026-08-01`。按各月份的工作日與費率累計，到今天只計已工作秒數；不是每秒把金額寫入 NVS。因此重開機可重算，但不保留歷年月薪異動。到職日在未來時為零；缺少任何所需歷史行事曆時 `job_total_available=false`，金額歸零並由 UI 顯示提示。

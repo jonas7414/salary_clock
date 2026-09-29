@@ -143,7 +143,9 @@ void task(void *) {
         xEventGroupSetBits(system_events(),SYSTEM_ERROR_BIT); ESP_LOGE("display","Display initialization failed");
         vTaskDelete(nullptr); return;
     }
-    UiAnimation animation(esp_random());
+    // The 52-coin state belongs only to this task. Keep it in internal static
+    // storage instead of consuming the display task's 8 KiB stack (no PSRAM needed).
+    static UiAnimation animation(esp_random());
     UiModel model{}; model.config=app_config_snapshot(); model.physics=&animation.physics();
     model.brightness=app_config_brightness();
     model.theme=app_config_theme();

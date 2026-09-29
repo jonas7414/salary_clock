@@ -27,7 +27,8 @@ def main():
     env=os.environ.copy()
     env["ZIG_GLOBAL_CACHE_DIR"]=str(ROOT/".tools"/"zig-cache")
     env["ZIG_LOCAL_CACHE_DIR"]=str(ROOT/".tools"/"zig-local")
-    compiler=[args.zig,"c++"] if args.zig else [args.cxx]
+    # Zig's optimized builds may define NDEBUG; keep assert-based tests active.
+    compiler=([args.zig,"c++"] if args.zig else [args.cxx])+["-UNDEBUG"]
     job_binary=OUT/("test_job_salary.exe" if os.name=="nt" else "test_job_salary")
     subprocess.run(compiler+["-std=c++17","-O2","-Wall","-Wextra","-Werror",
         "-Icomponents/app_core/include","-Icomponents/display/include","-Icomponents/coin_physics/include",

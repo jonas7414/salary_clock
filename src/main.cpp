@@ -10,15 +10,19 @@
 #include "ota_manager.h"
 #include "esp_log.h"
 #include "esp_task_wdt.h"
+#include "crash_report.h"
 extern "C" void app_main() {
     button_check_wakeup();
     // A stuck initializer must also reset pending firmware for bootloader rollback.
     ESP_ERROR_CHECK(esp_task_wdt_add(nullptr));
+    crash_report_print();
     ESP_ERROR_CHECK(app_system_init());
     bool configured=false;
     ESP_ERROR_CHECK(app_config_init(&configured));
     if (configured) xEventGroupSetBits(system_events(),CONFIG_READY_BIT);
     ESP_LOGI("main","Salary Thief Calculator %s",APP_FIRMWARE_VERSION);
+    const auto crash_error=crash_report_start();
+    if (crash_error!=ESP_OK) ESP_LOGW("main","Crash reporting unavailable: %s",esp_err_to_name(crash_error));
     ESP_ERROR_CHECK(esp_task_wdt_reset());
     ESP_ERROR_CHECK(display_start());
     // The display task plays its intro while these services start and connect.

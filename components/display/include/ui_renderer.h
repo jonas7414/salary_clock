@@ -5,6 +5,7 @@
 #include "holiday_countdown.h"
 #include "display_preferences.h"
 #include "ota_status.h"
+#include "crash_report_status.h"
 #include <cstddef>
 #include <cstdint>
 constexpr int SCREEN_WIDTH=320, SCREEN_HEIGHT=170;
@@ -23,6 +24,7 @@ struct UiModel {
     HolidayCountdown holiday{};
     DisplayPreferences preferences{};
     OtaStatus ota{};
+    CrashReportStatus crash{};
     int anniversary_days{};
     unsigned hundredths{},weekday{};
     SystemState system{SYSTEM_BOOTING};

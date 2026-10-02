@@ -107,6 +107,7 @@ pio device monitor -b 115200
 | [HTTP 與內部 API](docs/api.md) | 設定契約、狀態欄位與錯誤 |
 | [開發與驗證指南](docs/development.md) | 建置、主機測試、字型、demo 重繪與發版 |
 | [驗證記錄](docs/validation.md) | 測試程序及既有驗證範圍 |
+| [崩潰診斷](docs/crash-diagnostics.md) | 單筆 Flash 紀錄、USB 讀取與私人建置的確認回報 |
 | [行事曆](docs/taiwan-calendar.md)／[電池](docs/battery.md)／[OTA](docs/ota.md) | 各功能的技術說明 |
 
 ## 參考與素材授權

@@ -23,6 +23,7 @@ def main():
     args=parser.parse_args()
     subprocess.run([sys.executable,str(ROOT/"tools/update_taiwan_calendar.py"),"--check"],check=True)
     subprocess.run([sys.executable,"-m","unittest","discover","-s","tests","-p","test_taiwan_calendar.py"],cwd=ROOT,check=True)
+    subprocess.run([sys.executable,"-m","unittest","discover","-s","tests","-p","test_coredump_tools.py"],cwd=ROOT,check=True)
     OUT.mkdir(parents=True,exist_ok=True)
     env=os.environ.copy()
     env["ZIG_GLOBAL_CACHE_DIR"]=str(ROOT/".tools"/"zig-cache")
@@ -112,6 +113,12 @@ def main():
     cjson_object=OUT/"cJSON.o"
     cc=[args.zig,"cc"] if args.zig else [args.cxx,"-x","c"]
     subprocess.run(cc+["-std=c99","-O2","-c",str(cjson/"cJSON.c"),"-o",str(cjson_object)],cwd=ROOT,env=env,check=True)
+    crash_binary=OUT/("test_crash_report.exe" if os.name=="nt" else "test_crash_report")
+    subprocess.run(compiler+["-std=c++17","-O2","-Wall","-Wextra","-Werror",
+        "-Icomponents/crash_report/include","-Icomponents/app_core/include","-I"+str(cjson),
+        "tests/test_crash_report.cpp","components/crash_report/crash_payload.cpp",str(cjson_object),
+        "-o",str(crash_binary)],cwd=ROOT,env=env,check=True)
+    subprocess.run([str(crash_binary),str(OUT/"crash_payload.json")],cwd=ROOT,env=env,check=True)
     json_binary=OUT/("test_json.exe" if os.name=="nt" else "test_json")
     subprocess.run(compiler+["-std=c++17","-O2","-Wall","-Wextra","-Werror",
         "-Icomponents/app_config/include","-Icomponents/app_core/include","-I"+str(cjson),

@@ -1,6 +1,7 @@
 #include "display.h"
 #include "button.h"
 #include "ota_manager.h"
+#include "crash_report.h"
 #include "display_schedule.h"
 #include "ui_renderer.h"
 #include "ui_animation.h"
@@ -185,6 +186,7 @@ void task(void *) {
         const float dt=std::clamp(float(frame_start-last_us)/1000000.f,0.f,.05f); last_us=frame_start;
         const auto device=device_snapshot(); model.salary=salary_snapshot(); model.system=system_state();
         model.ota=ota_get_status();
+        model.crash=crash_report_snapshot();
         const auto bits=xEventGroupGetBits(system_events()); model.synced=bits&TIME_SYNCED_BIT; model.connected=bits&WIFI_CONNECTED_BIT;
         model.associated=bits&WIFI_ASSOCIATED_BIT;
         model.sntp_synced=bits&SNTP_SYNCED_BIT;
@@ -205,7 +207,7 @@ void task(void *) {
         model.frame_us=device.frame_us; model.dropped_frames=dropped;
         uint8_t page;
         while (xQueueReceive(page_events(),&page,0)==pdTRUE) {
-            if (model.ota.prompt || model.ota.foreground)continue;
+            if (model.ota.prompt || model.ota.foreground || crash_report_visible(model.crash))continue;
             if(page==BRIGHTNESS_EDIT && model.page==7) {
                 if(model.brightness_editing) {
                     model.brightness_save_failed=app_config_save_brightness(model.brightness)!=ESP_OK;
@@ -242,7 +244,7 @@ void task(void *) {
         // since its original press edge occurred while the intro forced the LCD on.
         const bool pressed=device.button_presses!=last_button_presses || boot.button_wake();
         last_button_presses=device.button_presses;
-        const bool force_on=model.brightness_editing || model.boot_progress<1.f || model.ota.prompt || model.ota.foreground ||
+        const bool force_on=model.brightness_editing || model.boot_progress<1.f || model.ota.prompt || model.ota.foreground || crash_report_visible(model.crash) ||
             (bits&(SETUP_MODE_BIT|SYSTEM_ERROR_BIT)) || !(bits&CONFIG_READY_BIT);
         const bool visible=display_policy.update(schedule,minute,model.synced,force_on,pressed,model.animation_ms);
         const auto err=update_screen(model,visible,panel_on);

@@ -1,22 +1,23 @@
-v1.4.9 local validation (2026-09-29)
-Full tools/test_host.py suite executed with a local MSVC argument adapter.
-CI repeats the suite with g++ and -Werror before publishing.
+v1.4.10 local validation (2026-10-02)
+Full tools/test_host.py suite executed with Zig C++17, assertions enabled and -Werror.
+CI repeats the suite with g++ before publishing.
 
 PASS: 6 Python calendar tests; 2026-2027 table, 24 complete months
+PASS: 3 core dump export tests (partition validation, CRC, empty/truncated/corrupt records)
 PASS: job salary boundaries, second ticks, monthly totals, missing calendar and LCD strip rendering
 PASS: 2346 calendar streaming/cache checks
 PASS: 2562 button checks
 PASS: 1437 clock/holiday/navigation/brightness rendering checks
 PASS: moving after-work cat in all three themes; full/strip equality and scene clipping
+PASS: crash consent/offline/one-attempt policy, acknowledgment-before-erase, Loki JSON escaping and bounded payload
 PASS: 15253605 core checks (salary, calendar, configuration, button, Wi-Fi, battery, physics, animation, rendering)
 PASS: 73265 RTC checks
 PASS: 9116684 coin stacking checks
-PASS: 193 NVS checks (including brightness persistence and display preference migration)
+PASS: 193 NVS checks
 PASS: 168 JSON/API settings checks
 PASS: 283 OTA checks
-PASS: 3 release guard tests
-PASS: Playwright portal tests at 320, 390 and 1024 px (ordering, save, NTP, anniversaries and layout)
-PASS: tdisplay_s3 and tdisplay_s3_no_psram firmware builds and release image validation
+PASS: 5 release guard tests (including offline replacement and public token rejection)
 
-Host simulation and compilation only. Physical PWM brightness, buttons,
-sleep power consumption and on-device OTA require hardware verification.
+Host simulation only. Physical panic capture, power-loss retention,
+Wi-Fi reporting and on-device OTA require hardware verification.
+Firmware build and release artifact validation are recorded separately by the release workflow.

@@ -1,4 +1,4 @@
-# GitHub Releases OTA（v1.4.4）
+# GitHub Releases OTA
 
 ## 實際行為
 
@@ -36,9 +36,12 @@
 | otadata | data/ota | `0x010000` | `0x2000` | 兩個 sector 的開機選擇資訊 |
 | ota_0 | app/ota_0 | `0x020000` | `0x400000`（4 MiB） | A |
 | ota_1 | app/ota_1 | `0x420000` | `0x400000`（4 MiB） | B |
-| storage | data/spiffs | `0x820000` | `0x7e0000` | 保留，未掛載 |
+| storage | data/spiffs | `0x820000` | `0x7a0000` | 保留，未掛載 |
+| coredump | data/coredump | `0xfc0000` | `0x40000`（256 KiB） | 最近一次崩潰紀錄，新紀錄覆蓋舊紀錄 |
 
 結束位置為 `0x1000000`，符合 board 的 16 MB。`0x12000..0x1ffff` 是 app 對齊留白。
+
+v1.4.10 新增崩潰分區；既有 A/B 裝置可正常 OTA 更新 application，但需要再透過 USB 更新分區表，才能啟用崩潰保存。NVS 與 A/B 槽的位置、大小維持不變。公開 Release 不含 Loki Token，保留 USB 診斷；雲端詢問回報僅在配置憑證的私人建置啟用，詳見 [崩潰診斷](crash-diagnostics.md)。
 
 舊版沒有 OTA，且使用不同分區表，所以**第一次必須用 USB 完整安裝 bootloader、partitions、otadata 與 app**，不能只把新的 `firmware.bin` 寫到舊 factory offset。正常 PlatformIO Upload 會寫入這四項，不會寫入 `0x9000..0xefff` 的 NVS。不要使用 erase-flash 或 erase-all。
 

@@ -416,15 +416,17 @@ void holiday_page(Canvas &c,const UiModel &m) {
         c.center(160,68,"休假進行中",24,GREEN);
         c.center(160,108,"放鬆一下，今天屬於你",12,MUTED);
     } else {
-        const unsigned days=h.remaining_seconds/86400,hours=h.remaining_seconds%86400/3600;
-        std::snprintf(text,sizeof(text),"%02u",days); c.text(18,64,text,32,GOLD);
-        const int day_width=Canvas::width(text,32);
-        c.text(24+day_width,80,"天",16,INK);
-        std::snprintf(text,sizeof(text),"%02u",hours); c.text(134,64,text,32,GOLD);
-        c.text(140+Canvas::width(text,32),80,"小時",16,INK);
+        const unsigned values[]={h.remaining_seconds/86400,h.remaining_seconds%86400/3600,
+                                 h.remaining_seconds%3600/60,h.remaining_seconds%60};
+        const char *units[]={"天","小時","分","秒"};
+        for (unsigned i=0;i<4;++i) {
+            const int center=53+int(i)*71;
+            std::snprintf(text,sizeof(text),"%02u",values[i]);
+            c.center(center,61,text,Canvas::width(text,32)>67?24:32,GOLD);
+            c.center(center,97,units[i],12,INK);
+        }
         std::snprintf(text,sizeof(text),"%02d/%02d 開始放假",h.target_date/100%100,h.target_date%100);
-        c.text(18,109,text,12,MUTED);
-        quiet_cloud(c,281,87,m.animation_ms);
+        c.text(18,113,text,12,MUTED);
     }
     c.rect(18,130,284,8,LINE);
     c.rect(18,130,int(284*std::clamp(h.progress,0.f,1.f)),8,GOLD);
@@ -557,6 +559,33 @@ void rtc_sync(Canvas &c,const UiModel &m) {
 }
 }
 namespace {
+void crash_dialog(Canvas &c,const UiModel &m) {
+    const auto &s=m.crash;
+    c.rect(0,0,320,170,BG,12);
+    c.rect(14,20,292,132,PANEL); c.rect(14,20,292,2,GOLD);
+    if (s.state==CrashReportState::Prompt) {
+        c.text(28,31,"檢測到錯誤，是否回報？",16,INK);
+        c.text(28,59,"回報裝置識別與錯誤摘要",12,MUTED);
+        c.text(28,78,"成功後刪除本機紀錄",12,INK);
+        const char *choices[]={"回報","稍後"};
+        for (unsigned i=0;i<2;++i) {
+            const int x=32+int(i)*136;
+            const bool selected=(i==0)==s.report;
+            c.rect(x,99,120,24,selected?GOLD:LINE);
+            c.center(x+60,104,choices[i],12,selected?BG:INK);
+        }
+        c.center(160,133,"上方按鈕 選擇 / 下方按鈕 確認",10,MUTED);
+        return;
+    }
+    const bool sent=s.state==CrashReportState::Sent,cleanup=s.state==CrashReportState::CleanupFailed;
+    const bool sending=s.state==CrashReportState::Sending;
+    c.text(28,34,sending?"正在回報錯誤":sent?"錯誤已回報":cleanup?"已回報，清除失敗":"回報未完成",16,INK);
+    c.text(28,68,sending?"請保持電源與網路連線":sent?"本機錯誤紀錄已刪除":"本機紀錄保留，下次開機再試",12,MUTED);
+    if (s.http_status && !sent) {
+        char line[32]; std::snprintf(line,sizeof(line),"HTTP %d",s.http_status); c.text(28,94,line,12,GOLD);
+    }
+    if (!sending) c.center(160,126,"下方按鈕 返回",12,GOLD);
+}
 void update_dialog(Canvas &c,const UiModel &m) {
     const auto &o=m.ota;
     c.rect(0,0,320,170,BG,12);
@@ -602,6 +631,7 @@ void ui_render(uint16_t *pixels,int offset,int rows,const UiModel &m) {
     Canvas c(pixels,offset,rows,theme); c.rect(0,0,320,170,BG);
     frame(c,m);
     if (m.ota.foreground) { update_dialog(c,m); return; }
+    if (!m.ota.prompt && crash_report_visible(m.crash)) { crash_dialog(c,m); return; }
     if (m.boot_progress<1.f && m.system!=SYSTEM_ERROR && m.held_ms<500) {
         boot_scene(c,m); return;
     }

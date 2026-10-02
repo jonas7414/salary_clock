@@ -37,7 +37,7 @@ enum class RequestKind { Check, Install, Ignore };
 struct Request { RequestKind kind{RequestKind::Check}; char approved_version[32]{}; };
 bool ready() {
     const auto bits=xEventGroupGetBits(system_events());
-    return (bits&READY)==READY && !(bits&(SETUP_MODE_BIT|SYSTEM_ERROR_BIT|SLEEP_REQUESTED_BIT));
+    return (bits&READY)==READY && !(bits&(SETUP_MODE_BIT|SYSTEM_ERROR_BIT|SLEEP_REQUESTED_BIT|CRASH_REPORT_ACTIVE_BIT));
 }
 void publish(OtaState state,const char *message,esp_err_t error=ESP_OK,
              OtaEvent event=OtaEvent::PROGRESS,bool notify=false) {
@@ -320,7 +320,7 @@ void check(const Request &request,bool manual) {
         const bool approved=request.kind==RequestKind::Install && ota_version_approved(request.approved_version,release.version);
         xSemaphoreTake(status_mutex,portMAX_DELAY);
         status.checked=true; status.choice=1;
-        const bool can_prompt=!(xEventGroupGetBits(system_events())&(SETUP_MODE_BIT|SLEEP_REQUESTED_BIT|SYSTEM_ERROR_BIT));
+        const bool can_prompt=!(xEventGroupGetBits(system_events())&(SETUP_MODE_BIT|SLEEP_REQUESTED_BIT|SYSTEM_ERROR_BIT|CRASH_REPORT_ACTIVE_BIT));
         status.prompt=!approved && can_prompt && ota_should_prompt(manual,release.version,ignored);
         status.foreground=approved;
         xSemaphoreGive(status_mutex);
@@ -424,6 +424,7 @@ esp_err_t ota_init() {
 namespace {
 esp_err_t enqueue(RequestKind kind) {
     if (!requests || !status_mutex) return ESP_ERR_INVALID_STATE;
+    if (xEventGroupGetBits(system_events())&CRASH_REPORT_ACTIVE_BIT) return ESP_ERR_INVALID_STATE;
     xSemaphoreTake(status_mutex,portMAX_DELAY);
     if (!ota_request_allowed(status,kind!=RequestKind::Check)) {
         xSemaphoreGive(status_mutex); return ESP_ERR_INVALID_STATE;

@@ -28,6 +28,8 @@ USB upload 是另一個動作；編譯不代表已燒錄。只有需要上板時
 
 ## 主機測試
 
+panic 保存、USB 匯出與精確 ELF 的解析方式見 [崩潰診斷](crash-diagnostics.md)。匯出工具的主機回歸：`python -m unittest discover -s tests -p test_coredump_tools.py -v`。Flash core dump 啟用不代表已完成實板崩潰／斷電驗收。
+
 需 C++17 編譯器、Python 與 Pillow，JSON 測試會使用建置所安裝的 ESP-IDF cJSON。
 
 ```sh
@@ -106,13 +108,15 @@ python tools/package_page_previews.py --font /path/to/NotoSansTC.ttf --docs
 3. 以 release tools 驗證映像版本、晶片、TLS／rollback／PSRAM、分區容量並產生 checksum：
 
 ```sh
-python tools/release_tools.py --tag vX.Y.Z --environment tdisplay_s3 --output release
-python tools/release_tools.py --tag vX.Y.Z --environment tdisplay_s3_no_psram --output release
+python tools/release_tools.py --public --tag vX.Y.Z --environment tdisplay_s3 --output release
+python tools/release_tools.py --public --tag vX.Y.Z --environment tdisplay_s3_no_psram --output release
 ```
 
 4. 在使用者授權的儲存庫提交並推送與版本一致的 tag。GitHub Actions 會建置雙組態，執行完整主機回歸，驗證資產，先建草稿，四檔上傳完成才公開設為 latest。
 5. 查驗 workflow 成功、Release 已公開且為預期 tag、四檔齊全、下載內容 SHA 與 descriptor 相符。只有做到這一步才說已發布。
 
 OTA 四個必要資產為 `firmware.bin`、`firmware.sha256`、`firmware-no-psram.bin`、`firmware-no-psram.sha256`。不要覆蓋已公開 tag／映像；修正發布使用新版本。`release/` 本機產物不等於 GitHub Release。
+
+公開建置必須設定環境變數 `SALARY_CLOCK_PUBLIC_BUILD=1`（PowerShell：`$env:SALARY_CLOCK_PUBLIC_BUILD='1'`）再執行雙組態建置；CI 已設定。這會排除本機 Loki 憑證並停用雲端回報，保留 USB 診斷。私人建置前移除該環境變數；含 Token 的 bin 與 ELF 只保留在忽略目錄，不公開上傳。公開打包一律加 `--public` 檢查。
 
 目前已知 OTA 目標設定見 `components/ota_manager/include/ota_config.h`；發版前核實，而不是把文件中的連結當作自動授權。更多流程與實板驗收見 [OTA 文件](ota.md)。

@@ -24,7 +24,7 @@ EventGroupHandle_t system_events() { return events; }
 QueueHandle_t system_commands() { return commands; }
 QueueHandle_t page_events() { return pages; }
 esp_err_t system_request(SystemCommand c) {
-    if (xEventGroupGetBits(events)&OTA_ACTIVE_BIT) return ESP_ERR_INVALID_STATE;
+    if (xEventGroupGetBits(events)&(OTA_ACTIVE_BIT|CRASH_REPORT_ACTIVE_BIT)) return ESP_ERR_INVALID_STATE;
     return xQueueSend(commands,&c,pdMS_TO_TICKS(100)) == pdTRUE ? ESP_OK : ESP_ERR_TIMEOUT;
 }
 SystemState system_state() {

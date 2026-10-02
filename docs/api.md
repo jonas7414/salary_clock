@@ -116,5 +116,6 @@ POST 是完整核心設定提交，不是一般 PATCH。下表「必填」欄位
 | `display/include/ui_renderer.h` | `UiModel`, `ui_next_page`, `ui_render`；RGB565 buffer，offset/rows 為螢幕座標 |
 | `app_core/include/taiwan_calendar.h` | 工作日資料查詢、年度驗證與安裝 |
 | `ota_manager/include/ota_manager.h` | `ota_init`, `ota_check_update`, `ota_start_update`, `ota_prompt_next/confirm`, `ota_get_status` |
+| `crash_report/include/crash_report.h` | `crash_report_print`, `crash_report_start`, `crash_report_snapshot`, `crash_report_next/confirm`；snapshot 與 queue 控制回報，不新增 AP HTTP 路由 |
 
 OTA 請求由 worker 序列處理；檢查不等於安裝，安裝需有效提示與版本確認。Callback 不應長時間阻塞。這些是 firmware C++ API，不是 HTTP 路由。

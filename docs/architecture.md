@@ -50,6 +50,7 @@ flowchart TD
 | `components/calendar_manager` | HTTPS 下載、驗證、NVS 快取今年與明年的行事曆 |
 | `components/battery_manager` | ADC 採樣、校正與供電狀態發布 |
 | `components/ota_manager` | 版本檢查、使用者確認、HTTPS 下載、SHA-256、A/B 切換與健康確認 |
+| `components/crash_report` | 開機崩潰摘要、單次回報詢問、Loki 上傳與成功後清除；原始崩潰由 ESP-IDF panic handler 保存 |
 
 各元件透過 `include/` 公開 header，依賴在各自 `CMakeLists.txt` 宣告。不要因新增 include 就假設 ESP-IDF 元件依賴會自動補齊。
 
@@ -95,6 +96,8 @@ flowchart TD
 內建行事曆為 2026–2027，下載快取只有兩個年度槽，**不是永久歷史帳本**。不要假定任意過去年份都能計算累積薪水。現行日期設定接受 1900–2199，但可接受的日期不等於已有行事曆資料。
 
 ## 持久化與回滾
+
+panic 現場由 ESP-IDF 保存到獨立的 256 KiB `coredump` Flash 分區，永遠只保存最近一次，離線時新紀錄也覆蓋舊紀錄。`components/crash_report` 在開機讀取並輸出 USB 摘要；worker 透過 queue 接收按鈕選擇、snapshot 提供彈窗狀態，不寫入 NVS。開機有網路與有效時間時詢問回報，使用者確認後送一筆含 `device` 的 Loki JSON；僅 HTTP 204 後清除整個崩潰區。`CRASH_REPORT_ACTIVE_BIT` 暫停新 OTA 請求與系統命令，回報使用既有下載／維護鎖。匯出工具依裝置實際分區表讀取並驗證 CRC。舊裝置需 USB 更新分區表才可啟用，詳見 [崩潰診斷](crash-diagnostics.md)。
 
 NVS namespace 為 `salary_thief`。主要設定由 magic、size、CRC 與 `AppConfig` 組成；`CONFIG_VERSION` 是資料 schema，和 `version.txt` 的韌體版本不同。
 

@@ -2,6 +2,7 @@
 #include "button_logic.h"
 #include "brightness.h"
 #include "ota_manager.h"
+#include "crash_report.h"
 #include "app_system.h"
 #include "driver/gpio.h"
 #include "driver/rtc_io.h"
@@ -25,9 +26,11 @@ void task(void *) {
         const uint32_t now=uint32_t(esp_timer_get_time()/1000);
         uint32_t held=0; bool power_held=false;
         const auto ota=ota_get_status();
+        const auto crash=crash_report_snapshot();
         const auto device=device_snapshot();
         const bool adjusting=device.brightness_editing;
-        const int mode=ota.prompt?1:ota.foreground?2:0;
+        const int mode=ota.prompt?1:ota.foreground?2:
+            crash.state==CrashReportState::Prompt?3:crash_report_visible(crash)?4:0;
         const bool power_down=gpio_get_level(GPIO_NUM_14)==0,boot_down=gpio_get_level(GPIO_NUM_0)==0;
         if (mode!=input_mode) {
             input_mode=mode; wait_release=true; released_at=0;
@@ -42,7 +45,12 @@ void task(void *) {
             const auto selected=select.update(boot_down,now);
             const auto confirmed=confirm.update(power_down,now);
             if (selected==ButtonAction::Page && mode==1) { ++presses; ota_prompt_next(); }
-            if (confirmed==ButtonAction::Page) { ++presses; ota_prompt_confirm(); }
+            if (selected==ButtonAction::Page && mode==3) { ++presses; crash_report_next(); }
+            if (confirmed==ButtonAction::Page) {
+                ++presses;
+                if (mode<=2) ota_prompt_confirm();
+                else if (crash.state!=CrashReportState::Sending) crash_report_confirm();
+            }
         } else if (suppress_power_press) {
             if (gpio_get_level(GPIO_NUM_14)!=0) suppress_power_press=false;
         } else if (!(xEventGroupGetBits(system_events())&SLEEP_REQUESTED_BIT)) {

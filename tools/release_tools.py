@@ -47,6 +47,13 @@ def validate_layout(parts,flash_size):
         raise ValueError("NVS must retain its existing location and size")
     if table['otadata']['size']!=0x2000 or table['ota_0']['size']!=table['ota_1']['size']:
         raise ValueError("Invalid OTA data or A/B slot sizes")
+    if any((table[name]['offset'],table[name]['size'])!=expected for name,expected in
+           [('ota_0',(0x20000,0x400000)),('ota_1',(0x420000,0x400000))]):
+        raise ValueError("Existing OTA slots must not move or shrink")
+    crash=table.get('coredump',{})
+    if any(crash.get(key)!=value for key,value in
+           [('type','data'),('subtype','coredump'),('offset',0xfc0000),('size',0x40000)]):
+        raise ValueError("Missing or incompatible crash storage partition")
     return table
 
 def binary_slots(binary):
@@ -60,10 +67,22 @@ def binary_slots(binary):
     if set(slots)!={'ota_0','ota_1'}: raise ValueError("Built partition table has no A/B slots")
     return slots
 
+def validate_crash_config(sdk):
+    if not (sdk.get('ESP_COREDUMP_ENABLE_TO_FLASH') and sdk.get('ESP_COREDUMP_DATA_FORMAT_ELF') and
+            sdk.get('ESP_COREDUMP_CHECKSUM_CRC32') and sdk.get('ESP_COREDUMP_STACK_SIZE',0)>=2048):
+        raise ValueError("Flash crash capture must be enabled with a dedicated stack")
+    if sdk.get('ESP_COREDUMP_FLASH_NO_OVERWRITE'):
+        raise ValueError("Crash storage must replace the previous record, including while offline")
+
+def validate_public_image(image):
+    if b'glc_' in image:
+        raise ValueError("Public firmware must not contain a Grafana access token")
+
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--tag')
     parser.add_argument('--environment',choices=ENVIRONMENTS)
+    parser.add_argument('--public',action='store_true',help='Reject embedded Grafana access tokens')
     parser.add_argument('--output',type=Path,default=ROOT/'.artifacts/release')
     args=parser.parse_args()
     version=load_version()
@@ -73,6 +92,7 @@ def main():
         print(version);return
     build=ROOT/'.pio/build'/args.environment
     image=(build/'firmware.bin').read_bytes()
+    if args.public: validate_public_image(image)
     slots=binary_slots((build/'partitions.bin').read_bytes())
     slot_size=min(size for _,size in slots.values())
     if not 0<len(image)<slot_size: raise ValueError("Firmware must be smaller than each OTA slot")
@@ -88,6 +108,10 @@ def main():
         raise ValueError("Insecure TLS is forbidden")
     if bool(sdk.get('SPIRAM'))!=(args.environment=='tdisplay_s3'):
         raise ValueError("Wrong PSRAM variant")
+    validate_crash_config(sdk)
+    from read_coredump import find_coredump
+    if find_coredump((build/'partitions.bin').read_bytes())!=(0xfc0000,0x40000):
+        raise ValueError("Built crash partition differs from the required layout")
     if description.get('project_version')!=version: raise ValueError("CMake project version mismatch")
     args.output.mkdir(parents=True,exist_ok=True)
     name=ENVIRONMENTS[args.environment]

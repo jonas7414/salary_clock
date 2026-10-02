@@ -74,5 +74,13 @@ int main(int argc,char **argv) {
         physics.set_count(work_coin_count(m.salary));
         if(!render(out/("progress_"+std::to_string(theme)+"_"+std::to_string(step)+".ppm"),m))return 1;
     }
-    std::puts("Rendered 24 pages, 8 manual scenes and 15 work-progress scenes; full/strip matched.");
+    for (unsigned theme=0;theme<3;++theme) for (unsigned state=0;state<6;++state) {
+        m=base; m.theme=static_cast<DisplayTheme>(theme);
+        const CrashReportState states[]={CrashReportState::Prompt,CrashReportState::Prompt,
+            CrashReportState::Sending,CrashReportState::Sent,CrashReportState::Failed,CrashReportState::CleanupFailed};
+        m.crash.state=states[state];m.crash.report=state==1;
+        m.crash.http_status=state==4?401:state==5?204:0;
+        if(!render(out/("crash_"+std::to_string(theme)+"_"+std::to_string(state)+".ppm"),m))return 1;
+    }
+    std::puts("Rendered 24 pages, 8 manual scenes, 15 work-progress scenes and 18 crash dialogs; full/strip matched.");
 }
